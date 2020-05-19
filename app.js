@@ -27,9 +27,10 @@ app.use((err, req, res, next) => {
     },
   });
 });
+
 app.listen(PORT, () => {
   console.log(
-    `Express Server started on Port ${app.get(
+    `Mafia server started on Port ${app.get(
       'port'
     )} | Environment : ${app.get('env')}`
   );
