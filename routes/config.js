@@ -1,5 +1,5 @@
 // Connection URL
-const dbUrl = 'mongodb://192.168.0.65:27017';
+const dbUrl = 'mongodb://kol-pc:27017';
 
 // Database Name
 const dbName = 'mafiadb';
