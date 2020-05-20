@@ -4,7 +4,8 @@
   "description": "Mafia game server",
   "main": "app.js",
   "scripts": {
-    "test": "app_test.js"
+    "test": "app_test.js",
+    "start": "node app.js"
   },
   "repository": {
     "type": "git",
@@ -13,9 +14,11 @@
   "author": "kol",
   "license": "MIT",
   "dependencies": {
+    "cors": "^2.8.5",
     "es6-enum": "^1.1.0",
     "express": "^4.17.1",
     "mongodb": "^3.5.7",
-    "morgan": "^1.10.0"
+    "morgan": "^1.10.0",
+    "node-fetch": "^2.6.0"
   }
 }
