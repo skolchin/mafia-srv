@@ -7,13 +7,15 @@ class ERRORS {
   static INVALID_PASSWORD = 3
   static EMPTY_PASSWORD = 4
   static NAME_NOT_UNIQUE = 5
+  static NOT_FOUND = 5
 
   static MESSAGES = [
     null,
     null,
     'User not found',
     'Invalid password',
-    'Password is empty'
+    'Password is empty',
+    'Not found'
   ]
 };
 
@@ -27,6 +29,10 @@ const handleErrors = (res, err, db_err, result=null) => {
       case ERRORS.DB_ERROR:
         console.log('Error ' + err.toString() + ': ' + db_err.message);
         return res.status(200).send({ success: false, error: err, message: db_err.message, data: result });
+  
+      case ERRORS.NOT_FOUND:
+        console.log('Not found');
+        return res.status(404).send();
   
       default:
         console.log('Error ' + err.toString() + ': ' + ERRORS.MESSAGES[err].toLowerCase());

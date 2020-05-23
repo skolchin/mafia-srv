@@ -22,10 +22,11 @@ app.post('/api/v1/auth/', UserRoutes.routeLoginUser);
 app.post('/api/v1/psw/', UserRoutes.routeSetPassword);
 app.post('/api/v1/user/', UserRoutes.routeUpdateUser);
 app.post('/api/v1/name_check/', UserRoutes.routeCheckName);
-
-app.post('/api/v1/new_game/', routeNewGame);
+app.get('/api/v1/a/', UserRoutes.routeGetPhoto);
+app.post('/api/v1/set_photo/', UserRoutes.routeUpdatePhoto);
 
 app.get('/api/v1/games', routeListGames);
+app.post('/api/v1/new_game/', routeNewGame);
 
 app.use((req, res, next) => {
   const err = new Error(`${req.method} ${req.url} Not Found`);
