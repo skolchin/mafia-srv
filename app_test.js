@@ -12,7 +12,7 @@ const doRequest = (api, request) => {
         if (!resJson.success)
             throw resJson;
         else
-            console.log(resJson);
+            console.log(JSON.stringify(resJson, null, 2));
     })
     .catch(error => {
         console.log('Error: ' + (error.statusText || error.message));
@@ -53,6 +53,11 @@ const testGames = (user_id) => {
     doRequest('/api/v1/games?user_id=' + user_id)
 }
 
+const testGetGame = (game_id) => {
+    console.log('Getting game ' + game_id);
+    doRequest('/api/v1/game?_id=' + game_id)
+}
+
 const testAddGame = (user_id, user_name) => {
     console.log('Adding game for user ' + user_id);
     doRequest('/api/v1/new_game', {
@@ -67,13 +72,15 @@ const testAddGame = (user_id, user_name) => {
     })
 }
 
-testLogin('1', '1');
-testLogin('1', '2');
+//testLogin('1', '1');
+//testLogin('1', '2');
 //testLogin('2', '2');
 
 //testAddGame('5ec182dc01845ef21761e699', 'kol');
-testGames('5ec182dc01845ef21761e699');
+testGames('5ec92b1b04eefb2a8406aaec');
+//testGetGame('5eca4a1e8c65911bb830956b')
 
 //testSetPassword('1', '1', '2');
 //testSetPassword('1', '1', '2');
+
 

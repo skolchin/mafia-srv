@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs')
 
 const { ERRORS, handleErrors } = require('./errors');
 const { dbUrl, dbName } = require('./config');
+const GameRoutes = require('./game');
 
 class UserRoutes {
   // Check password is valid
@@ -12,17 +13,17 @@ class UserRoutes {
   }
 
   // Get user data from request
-  static userFromRequest(req) {
+  static userFromRequest(params) {
     return {
-      _id: req.body._id,
+      _id: params._id,
       provider: '',
-      name: req.body.name.trim().toLowerCase(), 
-      displayName: req.body.displayName || '',
-      givenName: req.body.givenName || '',
-      familyName: req.body.familyName || '',
-      email: req.body.email || '',
-      password: req.body.password,
-      new_password: req.body.new_password,
+      name: params.name.trim().toLowerCase(), 
+      displayName: params.displayName || '',
+      givenName: params.givenName || '',
+      familyName: params.familyName || '',
+      email: params.email || '',
+      password: params.password,
+      new_password: params.new_password,
     }
   }
 
@@ -47,16 +48,16 @@ class UserRoutes {
   }
 
   // Find a user
-  static findUser = function(db, req, callback, dontCheckPassword=false) {
-    if (!req.body.name || !req.body.name.trim())
+  static findUser = function(db, params, callback, dontCheckPassword=false) {
+    if (!params.name || !params.name.trim())
       return callback(null, ERRORS.USER_NOT_FOUND)
 
-    db.collection('users').find({'name': req.body.name.trim().toLowerCase()}).toArray(function(err, docs) {
+    db.collection('users').find({'name': params.name.trim().toLowerCase()}).toArray(function(err, docs) {
       if (err)
         callback(null, ERRORS.DB_ERROR, err);
       else {
         console.log("Users found: " + docs.length.toString());
-        if (docs.length > 0 && (dontCheckPassword || UserRoutes.checkPassword(req.body.password, docs[0].password)))
+        if (docs.length > 0 && (dontCheckPassword || UserRoutes.checkPassword(params.password, docs[0].password)))
           callback(docs[0], 0);
         else if (docs.length > 0)
           callback(docs[0], ERRORS.INVALID_PASSWORD);
@@ -67,11 +68,11 @@ class UserRoutes {
   }
 
   // Update password
-  static updatePassword = function(db, req, callback) {
-    if (!req.body.new_password)
+  static updatePassword = function(db, params, callback) {
+    if (!params.new_password)
       return callback(null, ERRORS.EMPTY_PASSWORD)
 
-    UserRoutes.findUser(db, req, function(user, err, db_err=null) {
+    UserRoutes.findUser(db, params, function(user, err, db_err=null) {
       if (err)
         return callback(null, err, db_err);
 
@@ -79,7 +80,7 @@ class UserRoutes {
         if (db_err) 
           return callback(null, ERRORS.DB_ERROR, db_err);
 
-        bcrypt.hash(req.body.new_password, salt, function(db_err, hash) {
+        bcrypt.hash(params.new_password, salt, function(db_err, hash) {
           if (db_err) 
             return callback(null, ERRORS.DB_ERROR, db_err);
 
@@ -94,8 +95,8 @@ class UserRoutes {
   }
 
   // Update user profile
-  static updateUser = function(db, req, callback) {
-    const user = UserRoutes.userFromRequest(req);
+  static updateUser = function(db, params, callback) {
+    const user = UserRoutes.userFromRequest(params);
 
     if (!user.name)
       callback(null, ERRORS.USER_NOT_FOUND);
@@ -142,29 +143,29 @@ class UserRoutes {
   }
 
   // Save photo
-  static updatePhoto = function(db, req, callback) {
-    if (!req.body.user_id)
+  static updatePhoto = function(db, params, callback) {
+    if (!params.user_id)
       callback(null, ERRORS.USER_NOT_FOUND);
 
-    const id = req.body._id;
-    delete req.body._id;
+    const id = params._id;
+    delete params._id;
 
     db.collection('photos').updateOne(
-      { 'user_id': req.body.user_id }, 
-      {$set: req.body}, 
+      { 'user_id': params.user_id }, 
+      {$set: params}, 
       {w: 1, upsert: true}, 
       function(db_err, result) { 
-        const upd =  {...req.body, _id: result.upsertedId ? result.upsertedId._id : id};
+        const upd =  {...params, _id: result.upsertedId ? result.upsertedId._id : id};
         callback(upd, db_err ? ERRORS.DB_ERROR : 0, db_err) 
       });
   }
 
-  // Get user primary photo (GET function)
-  static findPhoto = function(db, req, callback) {
-    if (!req.query.user_id)
+  // Get user primary photo
+  static findPhoto = function(db, params, callback) {
+    if (!params.user_id)
       return callback(null, null);
 
-    db.collection('photos').find({'user_id': req.query.user_id}).toArray(function(db_err, docs) {
+    db.collection('photos').find({'user_id': params.user_id}).toArray(function(db_err, docs) {
       if (db_err)
         callback(null, ERRORS.DB_ERROR, db_err);
       else {
@@ -176,7 +177,7 @@ class UserRoutes {
   }
 
   // Route functions: login
-  static routeLoginUser = async (req, res, next) => {
+  static postLoginUser = async (req, res, next) => {
     try {
       console.log('Logging on user "' + req.body.name + '"');
 
@@ -186,9 +187,15 @@ class UserRoutes {
           return handleErrors(res, ERRORS.DB_ERROR, db_err);
         }
         const db = client.db(dbName);
-        UserRoutes.findUser(db, req, function(user, err, db_err=null) {
-          client.close();
-          return handleErrors(res, err, db_err, user);
+        UserRoutes.findUser(db, req.body, function(user, err, db_err=null) {
+          if (err || !req.body.with_games)
+            return handleErrors(res, err, db_err, user);
+          else {
+            GameRoutes.findUserGames(db, {...req.body, user_id: user._id}, function(games, err, db_err=null) {
+              client.close();
+              return handleErrors(res, err, db_err, {user: user, games: games});
+            });
+          }
         });
       });    
     
@@ -198,7 +205,7 @@ class UserRoutes {
   };
 
   // Route functions: set password
-  static routeSetPassword = async (req, res, next) => {
+  static postSetPassword = async (req, res, next) => {
     try {
       console.log('Changing password for user "' + req.body.name + '"');
 
@@ -208,7 +215,7 @@ class UserRoutes {
           return handleErrors(res, ERRORS.DB_ERROR, db_err);
         }
         const db = client.db(dbName);
-        UserRoutes.updatePassword(db, req, function(user, err, db_err=null) {
+        UserRoutes.updatePassword(db, req.body, function(user, err, db_err=null) {
           client.close();
           return handleErrors(res, err, db_err, {name: req.body.name});
         });
@@ -220,7 +227,7 @@ class UserRoutes {
   };
 
   // Route functions: create or update user profile
-  static routeUpdateUser = async (req, res, next) => {
+  static postUpdateUser = async (req, res, next) => {
     try {
       console.log('Updating user "' + req.body.name + '"');
 
@@ -230,7 +237,7 @@ class UserRoutes {
           return handleErrors(res, ERRORS.DB_ERROR, db_err);
         }
         const db = client.db(dbName);
-        UserRoutes.updateUser(db, req, function(user, err, db_err=null) {
+        UserRoutes.updateUser(db, req.body, function(user, err, db_err=null) {
           client.close();
           return handleErrors(res, err, db_err, user);
         });
@@ -242,7 +249,7 @@ class UserRoutes {
   };
 
   // Route functions: check name uniqueness
-  static routeCheckName = async (req, res, next) => {
+  static getCheckName = async (req, res, next) => {
     try {
       console.log('Checking unique name "' + req.body.name + '"');
 
@@ -252,7 +259,7 @@ class UserRoutes {
           return handleErrors(res, ERRORS.DB_ERROR, db_err);
         }
         const db = client.db(dbName);
-        UserRoutes.findUser(db, req, function(user, err, db_err=null) {
+        UserRoutes.findUser(db, req.query, function(user, err, db_err=null) {
           client.close();
           return handleErrors(res, err, db_err, {name: req.body.name});
         }, true);
@@ -263,8 +270,8 @@ class UserRoutes {
     }
   };
 
-  // Route functions: get photo
-  static routeGetPhoto = async (req, res, next) => {
+  // Route functions: get photo (GET gunction)
+  static getPhoto = async (req, res, next) => {
     try {
       console.log('Loading photo for user ' + req.query.user_id);
 
@@ -274,7 +281,7 @@ class UserRoutes {
           return handleErrors(res, ERRORS.DB_ERROR, db_err);
         }
         const db = client.db(dbName);
-        UserRoutes.findPhoto (db, req, function(photo, err, db_err=null) {
+        UserRoutes.findPhoto (db, req.query, function(photo, err, db_err=null) {
           client.close();
           if (err)
             return handleErrors(res, err, db_err, {user_id: req.query.user_id});
@@ -296,7 +303,7 @@ class UserRoutes {
   }  
 
   // Route functions: update photo
-  static routeUpdatePhoto = async (req, res, next) => {
+  static postUpdatePhoto = async (req, res, next) => {
     try {
       console.log('Changing photo for user ' + req.body.user_id);
 
@@ -306,7 +313,7 @@ class UserRoutes {
           return handleErrors(res, ERRORS.DB_ERROR, db_err);
         }
         const db = client.db(dbName);
-        UserRoutes.updatePhoto(db, req, function(photo, err, db_err=null) {
+        UserRoutes.updatePhoto(db, req.body, function(photo, err, db_err=null) {
           client.close();
           return handleErrors(res, err, db_err, {user_id: req.body.user_id});
         });
@@ -320,5 +327,5 @@ class UserRoutes {
 };
 
 
+module.exports = UserRoutes;
 
-module.exports = { UserRoutes }

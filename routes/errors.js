@@ -8,6 +8,10 @@ class ERRORS {
   static EMPTY_PASSWORD = 4
   static NAME_NOT_UNIQUE = 5
   static NOT_FOUND = 5
+  static GAME_NOT_FOUND = 6
+  static EMPTY_GAME_NAME = 7
+  static INVALID_GAME_STATUS = 8
+  static NOT_ENOUGHT_MEMBERS = 9
 
   static MESSAGES = [
     null,
@@ -15,7 +19,11 @@ class ERRORS {
     'User not found',
     'Invalid password',
     'Password is empty',
-    'Not found'
+    null,
+    'Game not found',
+    'Game name cannot be empty',
+    'Game status is invalid or final',
+    'Not enought members to start a game'
   ]
 };
 
