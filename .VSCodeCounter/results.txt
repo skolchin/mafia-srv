@@ -1,0 +1,34 @@
+Date : 2020-05-25 22:11:06
+Directory : c:\Users\kol\Documents\kol\mafia-srv
+Total : 8 files,  1334 codes, 40 comments, 121 blanks, all 1495 lines
+
+Languages
++------------+------------+------------+------------+------------+------------+
+| language   | files      | code       | comment    | blank      | total      |
++------------+------------+------------+------------+------------+------------+
+| JavaScript |          6 |        763 |         40 |        119 |        922 |
+| JSON       |          2 |        571 |          0 |          2 |        573 |
++------------+------------+------------+------------+------------+------------+
+
+Directories
++--------------------------------------------------------+------------+------------+------------+------------+------------+
+| path                                                   | files      | code       | comment    | blank      | total      |
++--------------------------------------------------------+------------+------------+------------+------------+------------+
+| .                                                      |          8 |      1,334 |         40 |        121 |      1,495 |
+| routes                                                 |          4 |        657 |         33 |         96 |        786 |
++--------------------------------------------------------+------------+------------+------------+------------+------------+
+
+Files
++--------------------------------------------------------+------------+------------+------------+------------+------------+
+| filename                                               | language   | code       | comment    | blank      | total      |
++--------------------------------------------------------+------------+------------+------------+------------+------------+
+| c:\Users\kol\Documents\kol\mafia-srv\app.js            | JavaScript |         40 |          0 |          9 |         49 |
+| c:\Users\kol\Documents\kol\mafia-srv\app_test.js       | JavaScript |         66 |          7 |         14 |         87 |
+| c:\Users\kol\Documents\kol\mafia-srv\package-lock.json | JSON       |        547 |          0 |          1 |        548 |
+| c:\Users\kol\Documents\kol\mafia-srv\package.json      | JSON       |         24 |          0 |          1 |         25 |
+| c:\Users\kol\Documents\kol\mafia-srv\routes\config.js  | JavaScript |          3 |          2 |          4 |          9 |
+| c:\Users\kol\Documents\kol\mafia-srv\routes\errors.js  | JavaScript |         41 |          3 |          8 |         52 |
+| c:\Users\kol\Documents\kol\mafia-srv\routes\game.js    | JavaScript |        342 |         13 |         38 |        393 |
+| c:\Users\kol\Documents\kol\mafia-srv\routes\user.js    | JavaScript |        271 |         15 |         46 |        332 |
+| Total                                                  |            |      1,334 |         40 |        121 |      1,495 |
++--------------------------------------------------------+------------+------------+------------+------------+------------+

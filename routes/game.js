@@ -79,6 +79,11 @@ class GameRoutes {
       }],
       created: Date.now(),
       modified: Date.now(),
+      history: [{
+        type: 'new',
+        user_id: params.game.leader._id,
+        ts: Date.now(),
+      }]
     }
     db.collection('games').insertOne(
       game,
@@ -97,8 +102,11 @@ class GameRoutes {
       callback(params.game, ERRORS.EMPTY_GAME_NAME)
     else
       db.collection('games').updateOne(
-        {'_id': new ObjectId(params.game._id)},
-        {'$set': {'name': params.game.name, 'modified': Date.now()}},
+        {_id: new ObjectId(params.game._id)},
+        {
+          $set: {name: params.game.name, modified: Date.now()},
+          $push: {history: {type: 'name', user_id: params.user ? params.user._id : null, ts: Date.now()}}
+        },
         {w:1}, 
         function(db_err) { 
           if (db_err)
@@ -126,8 +134,15 @@ class GameRoutes {
       switch (params.game.status) {
         case 'new':
           db.collection('games').updateOne(
-            {'_id': new ObjectId(params.game._id)},
-            {'$set': {'status': 'start', 'modified': Date.now()}},
+            {_id: new ObjectId(params.game._id)},
+            {
+              $set: {status: 'start', modified: Date.now()},
+              $push: {
+                history: {
+                  type: 'status', user_id: params.user ? params.user._id : null, status: 'start', ts: Date.now()
+                }
+              }
+            },
             {w:1}, 
             upd_callback
           );
@@ -156,13 +171,20 @@ class GameRoutes {
             })
 
             db.collection('games').updateOne(
-              {'_id': new ObjectId(params.game._id)},
-              {'$set': {
-                'status': 'active', 
-                'round': 1, 
-                'period': 'day', 
-                'members': new_members, 
-                'modified': Date.now()}
+              {_id: new ObjectId(params.game._id)},
+              {
+                $set: {
+                  status: 'active', 
+                  round: 1, 
+                  period: 'day', 
+                  members: new_members, 
+                  modified: Date.now()
+                },
+                $push: {
+                  history: {
+                    type: 'status', user_id: params.user ? params.user._id : null, status: 'active', ts: Date.now()
+                  }
+                }
               },
               {w:1}, 
               upd_callback
@@ -173,15 +195,34 @@ class GameRoutes {
         case 'active':
           if (params.game.period === 'day')
             db.collection('games').updateOne(
-              {'_id': new ObjectId(params.game._id)},
-              {'$set': {'period': 'night', 'modified': Date.now()}},
+              {_id: new ObjectId(params.game._id)},
+              {
+                $set: {
+                  period: 'night', modified: Date.now()
+                },
+                $push: {
+                  history: {
+                    type: 'period', user_id: params.user ? params.user._id : null, period: 'night', ts: Date.now()
+                  }
+                }
+              },
               {w:1}, 
               upd_callback
             )
           else 
             db.collection('games').updateOne(
-              {'_id': new ObjectId(params.game._id)},
-              {'$set': {'period': 'day', 'modified': Date.now()}, '$inc': {'round': 1}},
+              {_id: new ObjectId(params.game._id)},
+              {
+                $set: {
+                  period: 'day', modified: Date.now(), 
+                },
+                $inc: {round: 1},
+                $push: {
+                  history: {
+                    type: 'period', user_id: params.user ? params.user._id : null, period: 'day', ts: Date.now()
+                  }
+                }
+              },
               {w:1}, 
               upd_callback
             )
@@ -203,10 +244,48 @@ class GameRoutes {
       callback(null, ERRORS.USER_NOT_FOUND)
     else {
         db.collection('games').updateOne(
-          {'_id': new ObjectId(params.game._id)},
+          {_id: new ObjectId(params.game._id)},
           {
-            '$set': {'modified': Date.now()},
-            '$push': {'members': {...params.user, password: null}},
+            $set: {
+              modified: Date.now()
+            },
+            $push: {
+              members: {...params.user, password: undefined},
+              history: {
+                type: 'join', user_id: params.user._id, ts: Date.now()
+              }
+            }
+          },
+          {w:1}, 
+          function(db_err) { 
+            if (db_err)
+              callback(null, ERRORS.DB_ERROR, db_err)
+            else 
+              GameRoutes.findGame(db, params.game, callback)
+          }
+        )
+      }
+  }
+
+  // Actions of updateGame: cancel game
+  static updCancelGame = function (db, params, callback) {
+    if (!params.game._id)
+      callback(null, ERRORS.GAME_NOT_FOUND)
+    else if (!params.game.status)
+      callback(null, ERRORS.INVALID_GAME_STATUS)
+    else {
+        db.collection('games').updateOne(
+          {_id: new ObjectId(params.game._id)},
+          {
+            $set: {
+              status: 'cancel', 
+              modified: Date.now()
+            },
+            $push: {
+              history: {
+                type: 'cancel', user_id: params.user._id, ts: Date.now()
+              }
+            }
           },
           {w:1}, 
           function(db_err) { 
@@ -233,6 +312,9 @@ class GameRoutes {
 
       case '<join>':
         return GameRoutes.updJoinGame(db, params, callback)
+
+      case '<stop>':
+        return GameRoutes.updCancelGame(db, params, callback)
 
       default:
         return null;
@@ -282,7 +364,6 @@ class GameRoutes {
       next(e);
     }
   };
-
 
   // Route functions: create new or update game
   static postUpdateGame = async (req, res, next) => {

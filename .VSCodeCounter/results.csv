@@ -1,0 +1,10 @@
+"filename", "language", "JavaScript", "JSON", "comment", "blank", "total"
+"c:\Users\kol\Documents\kol\mafia-srv\app.js", "JavaScript", 40, 0, 0, 9, 49
+"c:\Users\kol\Documents\kol\mafia-srv\app_test.js", "JavaScript", 66, 0, 7, 14, 87
+"c:\Users\kol\Documents\kol\mafia-srv\package-lock.json", "JSON", 0, 547, 0, 1, 548
+"c:\Users\kol\Documents\kol\mafia-srv\package.json", "JSON", 0, 24, 0, 1, 25
+"c:\Users\kol\Documents\kol\mafia-srv\routes\config.js", "JavaScript", 3, 0, 2, 4, 9
+"c:\Users\kol\Documents\kol\mafia-srv\routes\errors.js", "JavaScript", 41, 0, 3, 8, 52
+"c:\Users\kol\Documents\kol\mafia-srv\routes\game.js", "JavaScript", 342, 0, 13, 38, 393
+"c:\Users\kol\Documents\kol\mafia-srv\routes\user.js", "JavaScript", 271, 0, 15, 46, 332
+"Total", "-", 763, 571, 40, 121, 1495
