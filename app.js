@@ -20,11 +20,12 @@ app.post('/api/v1/auth/', UserRoutes.postLoginUser);
 app.post('/api/v1/psw/', UserRoutes.postSetPassword);
 app.post('/api/v1/user/', UserRoutes.postUpdateUser);
 app.post('/api/v1/name_check/', UserRoutes.getCheckName);
-app.get('/api/v1/a/', UserRoutes.getPhoto);
+app.get('/api/v1/a', UserRoutes.getPhoto);
 app.post('/api/v1/set_photo/', UserRoutes.postUpdatePhoto);
 
+app.get('/api/v1/game', GameRoutes.getGame);
 app.get('/api/v1/games', GameRoutes.getListGames);
-app.get('/api/v1/game/', GameRoutes.getGame);
+app.get('/api/v1/updates', GameRoutes.getUpdatedGames);
 app.post('/api/v1/game/', GameRoutes.postUpdateGame);
 
 app.use((req, res, next) => {

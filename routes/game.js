@@ -32,8 +32,7 @@ class GameRoutes {
 
   // Get a game
   static findGame = function(db, params, callback) {
-    db.collection('games').find({ '_id': new ObjectId(params._id)})
-    .toArray(function(db_err, docs) {
+    db.collection('games').find({ '_id': new ObjectId(params._id)}).toArray(function(db_err, docs) {
       if (db_err)
         callback(null, ERRORS.DB_ERROR, db_err);
       else
@@ -48,7 +47,7 @@ class GameRoutes {
         $or: [
           { 'leader._id': params.user_id.toString() },
           { 'members._id': params.user_id.toString() },
-          { 'status' : 'start' }
+          { status : 'start' }
         ]
       })
     .toArray(function(err, docs) {
@@ -57,6 +56,37 @@ class GameRoutes {
       else {
         console.log("Games found: " + docs.length.toString());
         callback(GameRoutes.populateFieldsMany(docs), 0);
+      }
+    });
+  }
+
+  // Find games updated in period since
+  static findUpdates = function(db, params, callback) {
+    db.collection('games').find(
+      {
+        $or: [
+          { 'leader._id': params.user_id.toString() },
+          { 'members._id': params.user_id.toString() },
+        ],
+        modified: {$gte: params.since},
+      })
+    .toArray(function(err, docs) {
+      if (err)
+        callback(null, ERRORS.DB_ERROR, err);
+      else {
+        console.log("Games found: " + docs.length.toString());
+        const changes = !docs.length ? null : docs.map(doc => {
+          const hist = doc.history && doc.history.length ? doc.history[doc.history.length-1] : {type: 'none', };
+          return {
+            event: 'msg_game_update',
+            ts: hist.ts,
+            data: {
+              game: GameRoutes.populateFields(doc),
+              change: hist
+            }
+          }
+        });
+        callback(changes, 0);
       }
     });
   }
@@ -283,7 +313,7 @@ class GameRoutes {
             },
             $push: {
               history: {
-                type: 'cancel', user_id: params.user._id, ts: Date.now()
+                type: 'cancel', user_id: params.user._id, status: 'cancel', ts: Date.now()
               }
             }
           },
@@ -321,6 +351,28 @@ class GameRoutes {
     }
   }
 
+  // Route functions: get game by ID
+  static getGame = async (req, res, next) => {
+    try {
+      console.log('Loading game ' + req.query._id);
+
+      const client = new MongoClient(dbUrl, {useNewUrlParser: true, useUnifiedTopology: true});
+      client.connect(function(db_err) {
+        if (db_err)
+          return handleErrors(res, ERRORS.DB_ERROR, db_err)
+
+        const db = client.db(dbName);
+        GameRoutes.findGame(db, req.query, function(gamesFound, err, db_err=null) {
+          client.close();
+          return handleErrors(res, err, db_err, gamesFound);
+        });
+      });    
+    
+    } catch (e) {
+      next(e);
+    }
+  };
+
   // Route functions: list games
   static getListGames = async (req, res, next) => {
     try {
@@ -343,10 +395,10 @@ class GameRoutes {
     }
   };
 
-  // Route functions: get game by ID
-  static getGame = async (req, res, next) => {
+  // Route functions: subscribe to games update event stream
+  static getUpdatedGames = async (req, res, next) => {
     try {
-      console.log('Loading game ' + req.query._id);
+      console.log('New update stream for user ' + req.query.user_id);
 
       const client = new MongoClient(dbUrl, {useNewUrlParser: true, useUnifiedTopology: true});
       client.connect(function(db_err) {
@@ -354,9 +406,46 @@ class GameRoutes {
           return handleErrors(res, ERRORS.DB_ERROR, db_err)
 
         const db = client.db(dbName);
-        GameRoutes.findGame(db, req.query, function(gamesFound, err, db_err=null) {
+        var _since = req.headers['Last-Event-ID'] ? req.headers['Last-Event-ID'] : Date.now();
+        res.writeHead(200, {
+          'Connection': 'keep-alive',
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'X-Accel-Buffering': 'no'          
+        });
+
+        const intervalId = setInterval(() => {
+          const _params = {...req.query, since: _since};
+          GameRoutes.findUpdates(db, _params, function(changesFound, err, db_err=null) {
+            if (err) {
+              // todo
+              console.log('Some error ' + err.toString());
+            }
+            else {
+              if (!changesFound) {
+                res.write(':\n\n')
+              }
+              else {
+                changesFound.map(c => {
+                  res.write(`event: ${c.event}\n`);
+                  res.write(`id: ${c.ts}\n`);
+                  res.write(`data: ${JSON.stringify(c.data)}\n\n`);
+                })
+              }
+              _since = Date.now();
+            }
+          });
+        }, 3000);
+
+        res.write(':\n\n');
+        req.on('close', () => {
+          console.log('Closing stream for user ' + req.query.user_id);
+          clearInterval(intervalId);
           client.close();
-          return handleErrors(res, err, db_err, gamesFound);
+        });
+      
+        req.on('end', function() {
+          console.log('Stream closed for user ' + req.query.user_id);
         });
       });    
     
