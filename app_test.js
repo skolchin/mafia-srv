@@ -1,6 +1,6 @@
 const fetch = require("node-fetch");
 
-const doRequest = (api, request) => {
+const doRequest = (api, request, callback=null) => {
     fetch('http://localhost:5000' + api, request)
     .then(res => {
         if (res.ok) {
@@ -11,15 +11,17 @@ const doRequest = (api, request) => {
     .then(resJson => {
         if (!resJson.success)
             throw resJson;
-        else
+        else {
             console.log(JSON.stringify(resJson, null, 2));
+            if (callback) callback(resJson);
+        };
     })
     .catch(error => {
         console.log('Error: ' + (error.statusText || error.message));
     });
 }
 
-const testLogin = (user, pass) => {
+const testLogin = (user, pass, callback=null) => {
     console.log('Logging on user ' + user + ', password ' + pass);
     doRequest('/api/v1/auth/', {
         method: "POST",
@@ -27,9 +29,10 @@ const testLogin = (user, pass) => {
         credentials: "same-origin",
         body: JSON.stringify({
             name: user,
-            password: pass
-        })
-    })
+            password: pass,
+            with_games: true,
+        }),
+    }, callback)
 
 }
 
@@ -48,9 +51,12 @@ const testSetPassword = (user, old_pass, new_pass) => {
 
 }
 
-const testGames = (user_id) => {
+const testListGames = (user_id) => {
     console.log('Listing games for user ' + user_id);
     doRequest('/api/v1/games?user_id=' + user_id)
+}
+const testListGamesCb = (resJson) => {
+    testListGames(resJson.data._id);
 }
 
 const testGetGame = (game_id) => {
@@ -72,12 +78,13 @@ const testAddGame = (user_id, user_name) => {
     })
 }
 
-//testLogin('1', '1');
+testLogin('1', '1');
+//testLogin('1', '1', testListGamesCb);
 //testLogin('1', '2');
 //testLogin('2', '2');
 
 //testAddGame('5ec182dc01845ef21761e699', 'kol');
-testGames('5ec92b1b04eefb2a8406aaec');
+//testListGames('5ec92b1b04eefb2a8406aaec');
 //testGetGame('5eca4a1e8c65911bb830956b')
 
 //testSetPassword('1', '1', '2');

@@ -1,10 +1,11 @@
 const express = require('express');
+const assert = require('assert');
 const { MongoClient, ObjectId} = require('mongodb');
 
 const { ERRORS, handleErrors } = require('./errors');
 const { dbUrl, dbName } = require('./config');
 
-class GameRoutes {
+class Game {
 
   // Fill calculated fields of game structure
   static populateFields = (game) => {
@@ -27,7 +28,7 @@ class GameRoutes {
 
   // Fill calculated fields of game collection
   static populateFieldsMany = (games) => {
-    return games.map(g => GameRoutes.populateFields(g));
+    return games.map(g => Game.populateFields(g));
   }
 
   // Get a game
@@ -36,7 +37,7 @@ class GameRoutes {
       if (db_err)
         callback(null, ERRORS.DB_ERROR, db_err);
       else
-        callback(docs.length ? GameRoutes.populateFields(docs[0]) : null, docs.length ? 0 : ERRORS.GAME_NOT_FOUND);
+        callback(docs.length ? Game.populateFields(docs[0]) : null, docs.length ? 0 : ERRORS.GAME_NOT_FOUND);
     });
   }
 
@@ -54,8 +55,7 @@ class GameRoutes {
       if (err)
         callback(null, ERRORS.DB_ERROR, err);
       else {
-        console.log("Games found: " + docs.length.toString());
-        callback(GameRoutes.populateFieldsMany(docs), 0);
+        callback(Game.populateFieldsMany(docs), 0);
       }
     });
   }
@@ -74,14 +74,13 @@ class GameRoutes {
       if (err)
         callback(null, ERRORS.DB_ERROR, err);
       else {
-        console.log("Games found: " + docs.length.toString());
         const changes = !docs.length ? null : docs.map(doc => {
           const hist = doc.history && doc.history.length ? doc.history[doc.history.length-1] : {type: 'none', };
           return {
             event: 'msg_game_update',
             ts: hist.ts,
             data: {
-              game: GameRoutes.populateFields(doc),
+              game: Game.populateFields(doc),
               change: hist
             }
           }
@@ -118,8 +117,8 @@ class GameRoutes {
     db.collection('games').insertOne(
       game,
       {w:1}, 
-      function(db_err, result) { 
-        callback({...game, _id: result.insertedId.id}, db_err ? ERRORS.DB_ERROR : 0, db_err);
+      function(db_err) { 
+        callback(game, db_err ? ERRORS.DB_ERROR : 0, db_err);
       }
     )
   }
@@ -142,7 +141,7 @@ class GameRoutes {
           if (db_err)
             callback(null, ERRORS.DB_ERROR, db_err)
           else
-            GameRoutes.findGame(db, params.game, callback) 
+            Game.findGame(db, params.game, callback) 
         }
     )
   }
@@ -158,7 +157,7 @@ class GameRoutes {
         if (db_err)
           callback(null, ERRORS.DB_ERROR, db_err)
         else 
-          GameRoutes.findGame(db, params.game, callback)
+          Game.findGame(db, params.game, callback)
       };
 
       switch (params.game.status) {
@@ -179,7 +178,7 @@ class GameRoutes {
           break;
   
         case 'start':
-          GameRoutes.findGame(db, params.game, function(game, err, db_err) {
+          Game.findGame(db, params.game, function(game, err, db_err) {
             if (err)
               return callback(null, err, db_err)
             if (game.members.length < 4)
@@ -291,7 +290,7 @@ class GameRoutes {
             if (db_err)
               callback(null, ERRORS.DB_ERROR, db_err)
             else 
-              GameRoutes.findGame(db, params.game, callback)
+              Game.findGame(db, params.game, callback)
           }
         )
       }
@@ -322,7 +321,7 @@ class GameRoutes {
             if (db_err)
               callback(null, ERRORS.DB_ERROR, db_err)
             else 
-              GameRoutes.findGame(db, params.game, callback)
+              Game.findGame(db, params.game, callback)
           }
         )
       }
@@ -332,19 +331,19 @@ class GameRoutes {
   static updateGame = function(db, params, callback) {
     switch (params.action) {
       case '<new>':
-        return GameRoutes.updMakeNewGame(db, params, callback)
+        return Game.updMakeNewGame(db, params, callback)
 
       case '<name>':
-        return GameRoutes.updChangeGameName(db, params, callback)
+        return Game.updChangeGameName(db, params, callback)
   
       case '<next>':
-        return GameRoutes.updNextGameState(db, params, callback)
+        return Game.updNextGameState(db, params, callback)
 
       case '<join>':
-        return GameRoutes.updJoinGame(db, params, callback)
+        return Game.updJoinGame(db, params, callback)
 
       case '<stop>':
-        return GameRoutes.updCancelGame(db, params, callback)
+        return Game.updCancelGame(db, params, callback)
 
       default:
         return null;
@@ -362,7 +361,7 @@ class GameRoutes {
           return handleErrors(res, ERRORS.DB_ERROR, db_err)
 
         const db = client.db(dbName);
-        GameRoutes.findGame(db, req.query, function(gamesFound, err, db_err=null) {
+        Game.findGame(db, req.query, function(gamesFound, err, db_err=null) {
           client.close();
           return handleErrors(res, err, db_err, gamesFound);
         });
@@ -384,7 +383,7 @@ class GameRoutes {
           return handleErrors(res, ERRORS.DB_ERROR, db_err)
 
         const db = client.db(dbName);
-        GameRoutes.findUserGames(db, req.query, function(gamesFound, err, db_err=null) {
+        Game.findUserGames(db, req.query, function(gamesFound, err, db_err=null) {
           client.close();
           return handleErrors(res, err, db_err, gamesFound);
         });
@@ -398,7 +397,7 @@ class GameRoutes {
   // Route functions: subscribe to games update event stream
   static getUpdatedGames = async (req, res, next) => {
     try {
-      console.log('New update stream for user ' + req.query.user_id);
+      console.log('New user session ' + req.query.user_id);
 
       const client = new MongoClient(dbUrl, {useNewUrlParser: true, useUnifiedTopology: true});
       client.connect(function(db_err) {
@@ -415,11 +414,9 @@ class GameRoutes {
         });
 
         const intervalId = setInterval(() => {
-          const _params = {...req.query, since: _since};
-          GameRoutes.findUpdates(db, _params, function(changesFound, err, db_err=null) {
+          Game.findUpdates(db, {...req.query, since: _since}, function(changesFound, err, db_err=null) {
             if (err) {
-              // todo
-              console.log('Some error ' + err.toString());
+              callback(null, err, db_err);
             }
             else {
               if (!changesFound) {
@@ -439,7 +436,7 @@ class GameRoutes {
 
         res.write(':\n\n');
         req.on('close', () => {
-          console.log('Closing stream for user ' + req.query.user_id);
+          console.log('Closing user session ' + req.query.user_id);
           clearInterval(intervalId);
           client.close();
         });
@@ -465,7 +462,7 @@ class GameRoutes {
           return handleErrors(res, ERRORS.DB_ERROR, db_err);
 
         const db = client.db(dbName);
-        GameRoutes.updateGame(db, req.body, function(game, err, db_err=null) {
+        Game.updateGame(db, req.body, function(game, err, db_err=null) {
           client.close();
           return handleErrors(res, err, db_err, game);
         });
@@ -477,4 +474,4 @@ class GameRoutes {
   };
 }
 
-module.exports = GameRoutes;
+module.exports = Game;

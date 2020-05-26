@@ -2,11 +2,14 @@ const express = require('express');
 const { MongoClient, ObjectId} = require('mongodb');
 const bcrypt = require('bcryptjs')
 
+const passport = require('passport');
+const LocalStrategy = require('passport-local').Strategy;
+
 const { ERRORS, handleErrors } = require('./errors');
 const { dbUrl, dbName } = require('./config');
-const GameRoutes = require('./game');
+const Game = require('./game');
 
-class UserRoutes {
+class User {
   // Check password is valid
   static checkPassword = (pass, hash) => {
     return bcrypt.compareSync(pass, hash);
@@ -57,7 +60,7 @@ class UserRoutes {
         callback(null, ERRORS.DB_ERROR, err);
       else {
         console.log("Users found: " + docs.length.toString());
-        if (docs.length > 0 && (dontCheckPassword || UserRoutes.checkPassword(params.password, docs[0].password)))
+        if (docs.length > 0 && (dontCheckPassword || User.checkPassword(params.password, docs[0].password)))
           callback(docs[0], 0);
         else if (docs.length > 0)
           callback(docs[0], ERRORS.INVALID_PASSWORD);
@@ -67,12 +70,35 @@ class UserRoutes {
     });
   }
 
+  // Find a user
+  static findUserExt = function(_name, _password, callback, dontCheckPassword=false, withGames=false) {
+    const client = new MongoClient(dbUrl, {useNewUrlParser: true, useUnifiedTopology: true});
+    client.connect(function(db_err) {
+      if (db_err)
+        return callback(null, ERRORS.DB_ERROR, db_err);
+
+      const db = client.db(dbName);
+      User.findUser(db, {name: _name, password: _password}, function(user, err, db_err=null) {
+        if (err || !withGames) {
+          client.close();
+          callback(user, err, db_err);
+        }
+        else {
+          Game.findUserGames(db, {user_id: user._id}, function(games, err, db_err=null) {
+            client.close();
+            callback({user: user, games: games}, err, db_err);
+          });
+        }
+      }, dontCheckPassword);
+    });    
+};
+
   // Update password
   static updatePassword = function(db, params, callback) {
     if (!params.new_password)
       return callback(null, ERRORS.EMPTY_PASSWORD)
 
-    UserRoutes.findUser(db, params, function(user, err, db_err=null) {
+    User.findUser(db, params, function(user, err, db_err=null) {
       if (err)
         return callback(null, err, db_err);
 
@@ -96,7 +122,7 @@ class UserRoutes {
 
   // Update user profile
   static updateUser = function(db, params, callback) {
-    const user = UserRoutes.userFromRequest(params);
+    const user = User.userFromRequest(params);
 
     if (!user.name)
       callback(null, ERRORS.USER_NOT_FOUND);
@@ -180,24 +206,31 @@ class UserRoutes {
   static postLoginUser = async (req, res, next) => {
     try {
       console.log('Logging on user "' + req.body.name + '"');
+      passport.authenticate('local', (err, user, info) => {
+        if (err) 
+          return handleErrors(res, err, 0);
+        req.login(user, (err) => {
+          return handleErrors(res, err, 0, req.user);
+        })
+      })(req, res, next);
 
-      const client = new MongoClient(dbUrl, {useNewUrlParser: true, useUnifiedTopology: true});
+      /*const client = new MongoClient(dbUrl, {useNewUrlParser: true, useUnifiedTopology: true});
       client.connect(function(db_err) {
         if (db_err) {
           return handleErrors(res, ERRORS.DB_ERROR, db_err);
         }
         const db = client.db(dbName);
-        UserRoutes.findUser(db, req.body, function(user, err, db_err=null) {
+        User.findUser(db, req.body, function(user, err, db_err=null) {
           if (err || !req.body.with_games)
             return handleErrors(res, err, db_err, user);
           else {
-            GameRoutes.findUserGames(db, {...req.body, user_id: user._id}, function(games, err, db_err=null) {
+            Game.findUserGames(db, {...req.body, user_id: user._id}, function(games, err, db_err=null) {
               client.close();
               return handleErrors(res, err, db_err, {user: user, games: games});
             });
           }
         });
-      });    
+      });*/
     
     } catch (e) {
       next(e);
@@ -215,7 +248,7 @@ class UserRoutes {
           return handleErrors(res, ERRORS.DB_ERROR, db_err);
         }
         const db = client.db(dbName);
-        UserRoutes.updatePassword(db, req.body, function(user, err, db_err=null) {
+        User.updatePassword(db, req.body, function(user, err, db_err=null) {
           client.close();
           return handleErrors(res, err, db_err, {name: req.body.name});
         });
@@ -237,7 +270,7 @@ class UserRoutes {
           return handleErrors(res, ERRORS.DB_ERROR, db_err);
         }
         const db = client.db(dbName);
-        UserRoutes.updateUser(db, req.body, function(user, err, db_err=null) {
+        User.updateUser(db, req.body, function(user, err, db_err=null) {
           client.close();
           return handleErrors(res, err, db_err, user);
         });
@@ -259,7 +292,7 @@ class UserRoutes {
           return handleErrors(res, ERRORS.DB_ERROR, db_err);
         }
         const db = client.db(dbName);
-        UserRoutes.findUser(db, req.query, function(user, err, db_err=null) {
+        User.findUser(db, req.query, function(user, err, db_err=null) {
           client.close();
           return handleErrors(res, err, db_err, {name: req.body.name});
         }, true);
@@ -281,12 +314,12 @@ class UserRoutes {
           return handleErrors(res, ERRORS.DB_ERROR, db_err);
         }
         const db = client.db(dbName);
-        UserRoutes.findPhoto (db, req.query, function(photo, err, db_err=null) {
+        User.findPhoto (db, req.query, function(photo, err, db_err=null) {
           client.close();
           if (err)
             return handleErrors(res, err, db_err, {user_id: req.query.user_id});
           else {
-            const [type, data] = UserRoutes.getImageData(photo);
+            const [type, data] = User.getImageData(photo);
             const img = Buffer.from(data, 'base64');
             res.writeHead(200, {
               'Content-Type': type,
@@ -313,7 +346,7 @@ class UserRoutes {
           return handleErrors(res, ERRORS.DB_ERROR, db_err);
         }
         const db = client.db(dbName);
-        UserRoutes.updatePhoto(db, req.body, function(photo, err, db_err=null) {
+        User.updatePhoto(db, req.body, function(photo, err, db_err=null) {
           client.close();
           return handleErrors(res, err, db_err, {user_id: req.body.user_id});
         });
@@ -324,8 +357,36 @@ class UserRoutes {
     }
   };
 
+  // Auth function: establish passport strategy
+  static initStrategy = () => {
+    return new LocalStrategy(
+      { 
+        usernameField: 'name',
+        passReqToCallback:true 
+      },
+      (req, name, password, done) => {
+        User.findUserExt(name, password, function(user, err, db_err=null) {
+          if (err) 
+            return done(err, false, { message: errorMessage(err) })
+          else
+            return done(null, user);
+        }, false, Boolean(req.body.with_games));
+      }
+    )
+  }
+
+  // Auth function: user-to-session serialization
+  static serializeUser = (user, done) => {
+    done(null, user._id ? user._id : user.user._id);
+  };
+  
+  // Auth function: session-to-user deserialization
+  static deserializeUser = (id, done) => {
+    //TODO: id check
+    done(null, {_id: id});
+  };
+  
 };
 
-
-module.exports = UserRoutes;
+module.exports = User;
 

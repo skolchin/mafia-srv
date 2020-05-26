@@ -1,8 +1,13 @@
 const express = require('express');
 const logger = require('morgan');
 const cors = require('cors');
-const UserRoutes = require('./routes/user');
-const GameRoutes = require('./routes/game');
+const { v4: uuidv4 } = require('uuid');
+const session = require('express-session');
+const FileStore = require('session-file-store')(session);
+const passport = require('passport');
+
+const User = require('./routes/user');
+const Game = require('./routes/game');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -15,18 +20,31 @@ app.use(logger('tiny'));
 app.use(express.json());
 app.use(express.urlencoded());
 app.use(cors());
+app.use(session({
+  genid: (req) => uuidv4(),
+  store: new FileStore(),
+  secret: '<secret>',
+  resave: false,
+  saveUninitialized: true
+}));
+app.use(passport.initialize());
+app.use(passport.session());
 
-app.post('/api/v1/auth/', UserRoutes.postLoginUser);
-app.post('/api/v1/psw/', UserRoutes.postSetPassword);
-app.post('/api/v1/user/', UserRoutes.postUpdateUser);
-app.post('/api/v1/name_check/', UserRoutes.getCheckName);
-app.get('/api/v1/a', UserRoutes.getPhoto);
-app.post('/api/v1/set_photo/', UserRoutes.postUpdatePhoto);
+passport.use(User.initStrategy());
+passport.serializeUser(User.serializeUser);
+passport.deserializeUser(User.deserializeUser);
 
-app.get('/api/v1/game', GameRoutes.getGame);
-app.get('/api/v1/games', GameRoutes.getListGames);
-app.get('/api/v1/updates', GameRoutes.getUpdatedGames);
-app.post('/api/v1/game/', GameRoutes.postUpdateGame);
+app.post('/api/v1/auth/', User.postLoginUser);
+app.post('/api/v1/psw/', User.postSetPassword);
+app.post('/api/v1/user/', User.postUpdateUser);
+app.post('/api/v1/name_check/', User.getCheckName);
+app.get('/api/v1/a', User.getPhoto);
+app.post('/api/v1/set_photo/', User.postUpdatePhoto);
+
+app.get('/api/v1/game', Game.getGame);
+app.get('/api/v1/games', Game.getListGames);
+app.get('/api/v1/updates', Game.getUpdatedGames);
+app.post('/api/v1/game/', Game.postUpdateGame);
 
 app.use((req, res, next) => {
   const err = new Error(`${req.method} ${req.url} Not Found`);
