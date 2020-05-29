@@ -177,8 +177,8 @@ class User {
     delete params._id;
 
     db.collection('photos').updateOne(
-      { 'user_id': params.user_id }, 
-      {$set: params}, 
+      { user_id: ObjectId(params.user_id) }, 
+      {$set: {...params, user_id: ObjectId(params.user_id)}}, 
       {w: 1, upsert: true}, 
       function(db_err, result) { 
         const upd =  {...params, _id: result.upsertedId ? result.upsertedId._id : id};
@@ -191,7 +191,7 @@ class User {
     if (!params.user_id)
       return callback(null, null);
 
-    db.collection('photos').find({'user_id': params.user_id}).toArray(function(db_err, docs) {
+    db.collection('photos').find({'user_id': ObjectId(params.user_id)}).toArray(function(db_err, docs) {
       if (db_err)
         callback(null, ERRORS.DB_ERROR, db_err);
       else {
@@ -206,6 +206,7 @@ class User {
   static postLoginUser = async (req, res, next) => {
     try {
       console.log('Logging on user "' + req.body.name + '"');
+      console.log(req.session);
       passport.authenticate('local', (err, user, info) => {
         if (err) 
           return handleErrors(res, err, 0);
@@ -213,25 +214,6 @@ class User {
           return handleErrors(res, err, 0, req.user);
         })
       })(req, res, next);
-
-      /*const client = new MongoClient(dbUrl, {useNewUrlParser: true, useUnifiedTopology: true});
-      client.connect(function(db_err) {
-        if (db_err) {
-          return handleErrors(res, ERRORS.DB_ERROR, db_err);
-        }
-        const db = client.db(dbName);
-        User.findUser(db, req.body, function(user, err, db_err=null) {
-          if (err || !req.body.with_games)
-            return handleErrors(res, err, db_err, user);
-          else {
-            Game.findUserGames(db, {...req.body, user_id: user._id}, function(games, err, db_err=null) {
-              client.close();
-              return handleErrors(res, err, db_err, {user: user, games: games});
-            });
-          }
-        });
-      });*/
-    
     } catch (e) {
       next(e);
     }
@@ -240,6 +222,7 @@ class User {
   // Route functions: set password
   static postSetPassword = async (req, res, next) => {
     try {
+      if (!req.isAuthenticated()) return handleErrors(res, ERRORS.AUTH_REQUIRED);
       console.log('Changing password for user "' + req.body.name + '"');
 
       const client = new MongoClient(dbUrl, {useNewUrlParser: true, useUnifiedTopology: true});
@@ -262,6 +245,7 @@ class User {
   // Route functions: create or update user profile
   static postUpdateUser = async (req, res, next) => {
     try {
+      if (!req.isAuthenticated()) return handleErrors(res, ERRORS.AUTH_REQUIRED);
       console.log('Updating user "' + req.body.name + '"');
 
       const client = new MongoClient(dbUrl, {useNewUrlParser: true, useUnifiedTopology: true});
@@ -338,6 +322,7 @@ class User {
   // Route functions: update photo
   static postUpdatePhoto = async (req, res, next) => {
     try {
+      if (!req.isAuthenticated()) return handleErrors(res, ERRORS.AUTH_REQUIRED);
       console.log('Changing photo for user ' + req.body.user_id);
 
       const client = new MongoClient(dbUrl, {useNewUrlParser: true, useUnifiedTopology: true});

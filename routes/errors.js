@@ -3,6 +3,7 @@ const Enum = require("es6-enum");
 // errors
 const ERRORS = Enum(
   'DB_ERROR',
+  'AUTH_REQUIRED',
   'USER_NOT_FOUND',
   'INVALID_PASSWORD',
   'EMPTY_PASSWORD',
@@ -16,6 +17,7 @@ const ERRORS = Enum(
 
 const MESSAGES = [
   [ ERRORS.DB_ERROR, 'Database error' ],
+  [ ERRORS.AUTH_REQUIRED, 'Authentication required'],
   [ ERRORS.USER_NOT_FOUND, 'User not found' ],
   [ ERRORS.INVALID_PASSWORD, 'Invalid password' ],
   [ ERRORS.EMPTY_PASSWORD, 'Password is empty' ],
@@ -49,6 +51,10 @@ const handleErrors = (res, err, db_err, result=null) => {
       case ERRORS.DB_ERROR:
         console.log('Error ' + err.description + ': ' + db_err.message);
         return res.status(200).send({ success: false, error: err, message: db_err.message, data: result });
+  
+      case ERRORS.AUTH_REQUIRED:
+        console.log('Authentication required');
+        return res.status(403).send();
   
       case ERRORS.NOT_FOUND:
         console.log('Not found');

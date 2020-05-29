@@ -16,19 +16,21 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 app.set('port', PORT);
 app.set('env', NODE_ENV);
 
-app.use(logger('tiny'));
-app.use(express.json());
-app.use(express.urlencoded());
-app.use(cors());
 app.use(session({
   genid: (req) => uuidv4(),
   store: new FileStore(),
   secret: '<secret>',
   resave: false,
-  saveUninitialized: true
+  saveUninitialized: true,
+  cookie: { secure: false }
 }));
 app.use(passport.initialize());
 app.use(passport.session());
+
+app.use(logger('tiny'));
+app.use(cors({credentials: true}));
+app.use(express.json());
+app.use(express.urlencoded());
 
 passport.use(User.initStrategy());
 passport.serializeUser(User.serializeUser);

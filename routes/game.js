@@ -33,7 +33,7 @@ class Game {
 
   // Get a game
   static findGame = function(db, params, callback) {
-    db.collection('games').find({ '_id': new ObjectId(params._id)}).toArray(function(db_err, docs) {
+    db.collection('games').find({ '_id': ObjectId(params._id)}).toArray(function(db_err, docs) {
       if (db_err)
         callback(null, ERRORS.DB_ERROR, db_err);
       else
@@ -46,8 +46,8 @@ class Game {
     db.collection('games').find(
       {
         $or: [
-          { 'leader._id': params.user_id.toString() },
-          { 'members._id': params.user_id.toString() },
+          { 'leader._id': ObjectId(params.user_id) },
+          { 'members._id': ObjectId(params.user_id) },
           { status : 'start' }
         ]
       })
@@ -65,8 +65,8 @@ class Game {
     db.collection('games').find(
       {
         $or: [
-          { 'leader._id': params.user_id.toString() },
-          { 'members._id': params.user_id.toString() },
+          { 'leader._id': ObjectId(params.user_id) },
+          { 'members._id': ObjectId(params.user_id) },
         ],
         modified: {$gte: params.since},
       })
@@ -92,6 +92,11 @@ class Game {
 
   // Actions of updateGame: new game
   static updMakeNewGame = function (db, params, callback) {
+    const user = {
+      _id: ObjectId(params.game.leader._id),
+      name: params.game.leader.name,
+      displayName: params.game.leader.displayName,
+    }
     const game = {
       name: params.game.name || '<New game>',
       started: Date.now(),
@@ -99,10 +104,9 @@ class Game {
       status: 'new',
       period: null,
       voting: null,
-      leader: {...params.game.leader, password: null},
+      leader: user,
       members: [{
-        ...params.game.leader,
-        password: null,
+        ...user,
         role: 'leader',
         alive: true,
       }],
@@ -110,7 +114,7 @@ class Game {
       modified: Date.now(),
       history: [{
         type: 'new',
-        user_id: params.game.leader._id,
+        user_id: user._id,
         ts: Date.now(),
       }]
     }
@@ -134,7 +138,7 @@ class Game {
         {_id: new ObjectId(params.game._id)},
         {
           $set: {name: params.game.name, modified: Date.now()},
-          $push: {history: {type: 'name', user_id: params.user ? params.user._id : null, ts: Date.now()}}
+          $push: {history: {type: 'name', user_id: ObjectId(params.user._id), ts: Date.now()}}
         },
         {w:1}, 
         function(db_err) { 
@@ -163,12 +167,12 @@ class Game {
       switch (params.game.status) {
         case 'new':
           db.collection('games').updateOne(
-            {_id: new ObjectId(params.game._id)},
+            {_id: ObjectId(params.game._id)},
             {
               $set: {status: 'start', modified: Date.now()},
               $push: {
                 history: {
-                  type: 'status', user_id: params.user ? params.user._id : null, status: 'start', ts: Date.now()
+                  type: 'status', user_id: ObjectId(params.user._id), status: 'start', ts: Date.now()
                 }
               }
             },
@@ -200,7 +204,7 @@ class Game {
             })
 
             db.collection('games').updateOne(
-              {_id: new ObjectId(params.game._id)},
+              {_id: ObjectId(params.game._id)},
               {
                 $set: {
                   status: 'active', 
@@ -211,7 +215,7 @@ class Game {
                 },
                 $push: {
                   history: {
-                    type: 'status', user_id: params.user ? params.user._id : null, status: 'active', ts: Date.now()
+                    type: 'status', user_id: ObjectId(params.user._id), status: 'active', ts: Date.now()
                   }
                 }
               },
@@ -224,14 +228,14 @@ class Game {
         case 'active':
           if (params.game.period === 'day')
             db.collection('games').updateOne(
-              {_id: new ObjectId(params.game._id)},
+              {_id: ObjectId(params.game._id)},
               {
                 $set: {
                   period: 'night', modified: Date.now()
                 },
                 $push: {
                   history: {
-                    type: 'period', user_id: params.user ? params.user._id : null, period: 'night', ts: Date.now()
+                    type: 'period', user_id: ObjectId(params.user._id), period: 'night', ts: Date.now()
                   }
                 }
               },
@@ -240,7 +244,7 @@ class Game {
             )
           else 
             db.collection('games').updateOne(
-              {_id: new ObjectId(params.game._id)},
+              {_id: ObjectId(params.game._id)},
               {
                 $set: {
                   period: 'day', modified: Date.now(), 
@@ -248,7 +252,7 @@ class Game {
                 $inc: {round: 1},
                 $push: {
                   history: {
-                    type: 'period', user_id: params.user ? params.user._id : null, period: 'day', ts: Date.now()
+                    type: 'period', user_id: ObjectId(params.user._id), period: 'day', ts: Date.now()
                   }
                 }
               },
@@ -273,15 +277,19 @@ class Game {
       callback(null, ERRORS.USER_NOT_FOUND)
     else {
         db.collection('games').updateOne(
-          {_id: new ObjectId(params.game._id)},
+          {_id: ObjectId(params.game._id)},
           {
             $set: {
               modified: Date.now()
             },
             $push: {
-              members: {...params.user, password: undefined},
+              members: {
+                _id: ObjectId(params.user._id),
+                name: params.user.name,
+                displayName: params.user.displayName,
+              },
               history: {
-                type: 'join', user_id: params.user._id, ts: Date.now()
+                type: 'join', user_id: ObjectId(params.user._id), ts: Date.now()
               }
             }
           },
@@ -304,7 +312,7 @@ class Game {
       callback(null, ERRORS.INVALID_GAME_STATUS)
     else {
         db.collection('games').updateOne(
-          {_id: new ObjectId(params.game._id)},
+          {_id: ObjectId(params.game._id)},
           {
             $set: {
               status: 'cancel', 
@@ -312,7 +320,7 @@ class Game {
             },
             $push: {
               history: {
-                type: 'cancel', user_id: params.user._id, status: 'cancel', ts: Date.now()
+                type: 'cancel', user_id: ObjectId(params.user._id), status: 'cancel', ts: Date.now()
               }
             }
           },
@@ -353,6 +361,7 @@ class Game {
   // Route functions: get game by ID
   static getGame = async (req, res, next) => {
     try {
+      if (!req.isAuthenticated()) return res.redirect('/null');
       console.log('Loading game ' + req.query._id);
 
       const client = new MongoClient(dbUrl, {useNewUrlParser: true, useUnifiedTopology: true});
@@ -375,6 +384,7 @@ class Game {
   // Route functions: list games
   static getListGames = async (req, res, next) => {
     try {
+      if (!req.isAuthenticated()) return handleErrors(res, ERRORS.AUTH_REQUIRED);
       console.log('Listing games of user ' + req.query.user_id);
 
       const client = new MongoClient(dbUrl, {useNewUrlParser: true, useUnifiedTopology: true});
@@ -397,6 +407,7 @@ class Game {
   // Route functions: subscribe to games update event stream
   static getUpdatedGames = async (req, res, next) => {
     try {
+      if (!req.isAuthenticated()) return handleErrors(res, ERRORS.AUTH_REQUIRED);
       console.log('New user session ' + req.query.user_id);
 
       const client = new MongoClient(dbUrl, {useNewUrlParser: true, useUnifiedTopology: true});
@@ -410,7 +421,7 @@ class Game {
           'Connection': 'keep-alive',
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-cache',
-          'X-Accel-Buffering': 'no'          
+          'X-Accel-Buffering': 'no',
         });
 
         const intervalId = setInterval(() => {
@@ -454,6 +465,7 @@ class Game {
   // Route functions: create new or update game
   static postUpdateGame = async (req, res, next) => {
     try {
+      if (!req.isAuthenticated()) return handleErrors(res, ERRORS.AUTH_REQUIRED);
       console.log('Game '+ req.body.game._id + ' action ' + req.body.action);
 
       const client = new MongoClient(dbUrl, {useNewUrlParser: true, useUnifiedTopology: true});
