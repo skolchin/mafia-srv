@@ -3,10 +3,13 @@ const { MongoClient, ObjectId} = require('mongodb');
 const bcrypt = require('bcryptjs')
 
 const passport = require('passport');
-const LocalStrategy = require('passport-local').Strategy;
+const { v4: uuidv4 } = require('uuid');
+const JwtStrategy = require('passport-jwt').Strategy;
+const ExtractJwt = require('passport-jwt').ExtractJwt;
+const jwt = require('jsonwebtoken');
 
-const { ERRORS, handleErrors } = require('./errors');
-const { dbUrl, dbName } = require('./config');
+const { ERRORS, handleErrors, errorMessage } = require('./errors');
+const { dbUrl, dbName, secretKey } = require('./config');
 const Game = require('./game');
 
 class User {
@@ -50,46 +53,119 @@ class User {
     }
   }
 
-  // Find a user
-  static findUser = function(db, params, callback, dontCheckPassword=false) {
-    if (!params.name || !params.name.trim())
+  // Load a user by id
+  static loadUser = function(db, params, callback) {
+    if (!params._id)
       return callback(null, ERRORS.USER_NOT_FOUND)
 
-    db.collection('users').find({'name': params.name.trim().toLowerCase()}).toArray(function(err, docs) {
-      if (err)
+    db.collection('users').find({'_id': ObjectId(params._id)}).toArray((db_err, docs) => {
+      if (db_err)
         callback(null, ERRORS.DB_ERROR, err);
       else {
-        console.log("Users found: " + docs.length.toString());
-        if (docs.length > 0 && (dontCheckPassword || User.checkPassword(params.password, docs[0].password)))
-          callback(docs[0], 0);
-        else if (docs.length > 0)
-          callback(docs[0], ERRORS.INVALID_PASSWORD);
-        else
+        if (!docs.length)
           callback(null, ERRORS.USER_NOT_FOUND);
+        else
+          callback({user: docs[0]}, 0);
       }
     });
   }
 
-  // Find a user
-  static findUserExt = function(_name, _password, callback, dontCheckPassword=false, withGames=false) {
+  // Load a user by id
+  static loadUserExt = function(id, callback) {
     const client = new MongoClient(dbUrl, {useNewUrlParser: true, useUnifiedTopology: true});
     client.connect(function(db_err) {
       if (db_err)
         return callback(null, ERRORS.DB_ERROR, db_err);
 
       const db = client.db(dbName);
-      User.findUser(db, {name: _name, password: _password}, function(user, err, db_err=null) {
-        if (err || !withGames) {
+      User.loadUser(db, {_id: id}, (userGames, err, db_err=null) => {
           client.close();
-          callback(user, err, db_err);
-        }
+          callback(userGames, err, db_err);
+        });
+    });    
+  };
+
+  // Find a user by name and, optionally, load up the games
+  static findUser = function(db, params, callback, dontCheckPassword=false) {
+    if (!params.name || !params.name.trim())
+      return callback(null, ERRORS.USER_NOT_FOUND)
+
+    const find_callback = (db_err, docs) => {
+      if (db_err)
+        callback(null, ERRORS.DB_ERROR, err);
+      else {
+        console.log("Users found: " + docs.length.toString());
+        if (!docs.length)
+          callback(null, ERRORS.USER_NOT_FOUND);
+        else if (!dontCheckPassword && !User.checkPassword(params.password, docs[0].password))
+          callback(null, ERRORS.INVALID_PASSWORD);
         else {
-          Game.findUserGames(db, {user_id: user._id}, function(games, err, db_err=null) {
-            client.close();
-            callback({user: user, games: games}, err, db_err);
-          });
+          const _games = docs[0].games;
+          const {games: _, ..._user } = docs[0];
+          callback({user: _user, games: _games}, 0);
         }
-      }, dontCheckPassword);
+      }
+    }
+    if (!params.withGames) {
+      db.collection('users').find({'name': params.name.trim().toLowerCase()}).toArray(find_callback);
+    }
+    else {
+      db.collection('users').aggregate(
+        [{$match: {
+          name: params.name.trim().toLowerCase()
+        }}, {$lookup: {
+          from: 'games',
+          localField: '_id',
+          foreignField: 'leader._id',
+          as: 'games_1'
+        }}, {$lookup: {
+          from: 'games',
+          localField: '_id',
+          foreignField: 'members._id',
+          as: 'games_2'
+        }}, {$lookup: {
+          from: 'games',
+          pipeline: [
+            {$match: {status: 'start'}},
+          ],
+          as: 'games_3'
+        }}, {$set: {
+          games: {
+            $setDifference: [
+              { $concatArrays: [
+                "$games_1", 
+                "$games_2", 
+                "$games_3"
+              ]
+              }, []
+            ]
+          },
+        }}, {$unset: [
+          "games_1", "games_2", "games_3"
+        ]}])
+        .toArray(find_callback);
+    }
+  }
+
+  // Find a user by name - self-contained
+  static findUserExt = function(name, password, callback, dontCheckPassword=false, withGames=false) {
+    const client = new MongoClient(dbUrl, {useNewUrlParser: true, useUnifiedTopology: true});
+    client.connect(function(db_err) {
+      if (db_err)
+        return callback(null, ERRORS.DB_ERROR, db_err);
+
+      const db = client.db(dbName);
+      User.findUser(db, 
+        {
+          name: name, 
+          password: password, 
+          withGames: withGames
+        }, 
+        (userGames, err, db_err=null) => {
+          client.close();
+          callback(userGames, err, db_err);
+        }, 
+        dontCheckPassword);
     });    
 };
 
@@ -98,7 +174,7 @@ class User {
     if (!params.new_password)
       return callback(null, ERRORS.EMPTY_PASSWORD)
 
-    User.findUser(db, params, function(user, err, db_err=null) {
+    User.findUser(db, params, function(userGames, err, db_err=null) {
       if (err)
         return callback(null, err, db_err);
 
@@ -111,7 +187,7 @@ class User {
             return callback(null, ERRORS.DB_ERROR, db_err);
 
           db.collection('users').updateOne(
-            {'name': user.name}, 
+            {'name': userGames.user.name}, 
             {$set: {password: hash}}, 
             {w:1}, 
             function(db_err) { callback(user, db_err ? ERRORS.DB_ERROR : 0, db_err) });
@@ -206,14 +282,23 @@ class User {
   static postLoginUser = async (req, res, next) => {
     try {
       console.log('Logging on user "' + req.body.name + '"');
-      console.log(req.session);
-      passport.authenticate('local', (err, user, info) => {
-        if (err) 
-          return handleErrors(res, err, 0);
-        req.login(user, (err) => {
-          return handleErrors(res, err, 0, req.user);
-        })
-      })(req, res, next);
+      const client = new MongoClient(dbUrl, {useNewUrlParser: true, useUnifiedTopology: true});
+      client.connect(function(db_err) {
+        if (db_err) {
+          return handleErrors(res, ERRORS.DB_ERROR, db_err);
+        }
+        const db = client.db(dbName);
+        User.findUser(db, req.body, function(userGames, err, db_err=null) {
+          client.close();
+          if (err)  {
+            return handleErrors(res, err, db_err, {name: req.body.name});
+          }
+          else {
+            const token = jwt.sign({_id: userGames.user._id}, secretKey);
+            return res.status(200).send({ success: true, error: 0, token: 'JWT ' + token, data: userGames });
+          }
+        });
+      });
     } catch (e) {
       next(e);
     }
@@ -222,7 +307,6 @@ class User {
   // Route functions: set password
   static postSetPassword = async (req, res, next) => {
     try {
-      if (!req.isAuthenticated()) return handleErrors(res, ERRORS.AUTH_REQUIRED);
       console.log('Changing password for user "' + req.body.name + '"');
 
       const client = new MongoClient(dbUrl, {useNewUrlParser: true, useUnifiedTopology: true});
@@ -245,7 +329,6 @@ class User {
   // Route functions: create or update user profile
   static postUpdateUser = async (req, res, next) => {
     try {
-      if (!req.isAuthenticated()) return handleErrors(res, ERRORS.AUTH_REQUIRED);
       console.log('Updating user "' + req.body.name + '"');
 
       const client = new MongoClient(dbUrl, {useNewUrlParser: true, useUnifiedTopology: true});
@@ -258,28 +341,6 @@ class User {
           client.close();
           return handleErrors(res, err, db_err, user);
         });
-      });    
-    
-    } catch (e) {
-      next(e);
-    }
-  };
-
-  // Route functions: check name uniqueness
-  static getCheckName = async (req, res, next) => {
-    try {
-      console.log('Checking unique name "' + req.body.name + '"');
-
-      const client = new MongoClient(dbUrl, {useNewUrlParser: true, useUnifiedTopology: true});
-      client.connect(function(db_err) {
-        if (db_err) {
-          return handleErrors(res, ERRORS.DB_ERROR, db_err);
-        }
-        const db = client.db(dbName);
-        User.findUser(db, req.query, function(user, err, db_err=null) {
-          client.close();
-          return handleErrors(res, err, db_err, {name: req.body.name});
-        }, true);
       });    
     
     } catch (e) {
@@ -322,7 +383,6 @@ class User {
   // Route functions: update photo
   static postUpdatePhoto = async (req, res, next) => {
     try {
-      if (!req.isAuthenticated()) return handleErrors(res, ERRORS.AUTH_REQUIRED);
       console.log('Changing photo for user ' + req.body.user_id);
 
       const client = new MongoClient(dbUrl, {useNewUrlParser: true, useUnifiedTopology: true});
@@ -343,19 +403,25 @@ class User {
   };
 
   // Auth function: establish passport strategy
-  static initStrategy = () => {
-    return new LocalStrategy(
-      { 
-        usernameField: 'name',
-        passReqToCallback:true 
-      },
-      (req, name, password, done) => {
-        User.findUserExt(name, password, function(user, err, db_err=null) {
-          if (err) 
-            return done(err, false, { message: errorMessage(err) })
-          else
-            return done(null, user);
-        }, false, Boolean(req.body.with_games));
+  static authStrategy = () => {
+    return new JwtStrategy(
+      {
+        jwtFromRequest: ExtractJwt.fromExtractors([
+          ExtractJwt.fromAuthHeaderAsBearerToken('jwt'),
+          ExtractJwt.fromUrlQueryParameter('token')
+        ]),
+        secretOrKey: secretKey,
+      }, (jwt_payload, done) => {
+        if (!jwt_payload._id)
+          return done(-1, false, {message: errorMessage(ERRORS.USER_NOT_FOUND)})
+        else {
+          User.loadUserExt(jwt_payload._id, function(userGames, err, db_err=null) {
+            if (err) 
+              return done(err, false, { message: errorMessage(err, db_err) })
+            else
+              return done(null, userGames.user);
+          });
+        }
       }
     )
   }

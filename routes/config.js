@@ -4,5 +4,8 @@ const dbUrl = 'mongodb://kol-pc:27017';
 // Database Name
 const dbName = 'mafiadb';
 
-module.exports = { dbUrl, dbName };
+// Secret
+const secretKey = '<secret>';
+
+module.exports = { dbUrl, dbName, secretKey };
 

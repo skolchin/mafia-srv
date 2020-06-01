@@ -1,8 +1,15 @@
 const fetch = require("node-fetch");
 
-const doRequest = (api, request, callback=null) => {
-    fetch('http://localhost:5000' + api, request)
+const doRequest = (api, options, token=null, callback=null) => {
+    const authHeader = token ? { 'Authorization': token} : {};
+    const headers = {...options, ...authHeader};
+    console.log('--> Request url: ' + api);
+    console.log('--> Request headers:');
+    console.log(headers);
+    fetch('http://localhost:5000' + api, headers)
     .then(res => {
+        console.log('--> Response headers:');
+        console.log(res.headers);
         if (res.ok) {
             return res.json();
         }
@@ -30,13 +37,12 @@ const testLogin = (user, pass, callback=null) => {
         body: JSON.stringify({
             name: user,
             password: pass,
-            with_games: true,
+//            withGames: true,
         }),
-    }, callback)
-
+    }, null, callback)
 }
 
-const testSetPassword = (user, old_pass, new_pass) => {
+const testSetPassword = (user, new_pass, token=null, callback=null) => {
     console.log('Changing password for user ' + user + ' to ' + new_pass);
     doRequest('/api/v1/psw/', {
         method: "POST",
@@ -44,19 +50,20 @@ const testSetPassword = (user, old_pass, new_pass) => {
         credentials: "same-origin",
         body: JSON.stringify({
             name: user,
-            password: old_pass,
             new_password: new_pass
         })
-    })
-
+    }, token, callback)
 }
+const testSetPasswordCbf = (new_pass, callback=null) => {
+    return (resJson) => testSetPassword(resJson.data.user._id, new_pass, resJson.token, callback)
+};
 
-const testListGames = (user_id) => {
+const testListGames = (user_id, token=null, callback=null) => {
     console.log('Listing games for user ' + user_id);
-    doRequest('/api/v1/games?user_id=' + user_id)
+    doRequest('/api/v1/games?user_id=' + user_id, {method: 'GET', credentials: "same-origin"}, token, callback);
 }
 const testListGamesCb = (resJson) => {
-    testListGames(resJson.data._id);
+    testListGames(resJson.data.user._id, resJson.token);
 }
 
 const testGetGame = (game_id) => {
@@ -64,7 +71,7 @@ const testGetGame = (game_id) => {
     doRequest('/api/v1/game?_id=' + game_id)
 }
 
-const testAddGame = (user_id, user_name) => {
+const testAddGame = (user_id, user_name, token=null, callback=null) => {
     console.log('Adding game for user ' + user_id);
     doRequest('/api/v1/new_game', {
         method: "POST",
@@ -75,13 +82,16 @@ const testAddGame = (user_id, user_name) => {
             leader_id: user_id,
             leader_name: user_name,
         })
-    })
+    }, token, callback)
 }
 
-testLogin('1', '1');
+//testLogin('1', '1');
 //testLogin('1', '1', testListGamesCb);
+testLogin('1', '1', testSetPasswordCbf('2'));
 //testLogin('1', '2');
 //testLogin('2', '2');
+//testLogin('1', '1', testListGamesCb);
+
 
 //testAddGame('5ec182dc01845ef21761e699', 'kol');
 //testListGames('5ec92b1b04eefb2a8406aaec');

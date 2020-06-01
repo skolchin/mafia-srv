@@ -361,7 +361,6 @@ class Game {
   // Route functions: get game by ID
   static getGame = async (req, res, next) => {
     try {
-      if (!req.isAuthenticated()) return res.redirect('/null');
       console.log('Loading game ' + req.query._id);
 
       const client = new MongoClient(dbUrl, {useNewUrlParser: true, useUnifiedTopology: true});
@@ -384,7 +383,6 @@ class Game {
   // Route functions: list games
   static getListGames = async (req, res, next) => {
     try {
-      if (!req.isAuthenticated()) return handleErrors(res, ERRORS.AUTH_REQUIRED);
       console.log('Listing games of user ' + req.query.user_id);
 
       const client = new MongoClient(dbUrl, {useNewUrlParser: true, useUnifiedTopology: true});
@@ -407,7 +405,6 @@ class Game {
   // Route functions: subscribe to games update event stream
   static getUpdatedGames = async (req, res, next) => {
     try {
-      if (!req.isAuthenticated()) return handleErrors(res, ERRORS.AUTH_REQUIRED);
       console.log('New user session ' + req.query.user_id);
 
       const client = new MongoClient(dbUrl, {useNewUrlParser: true, useUnifiedTopology: true});
@@ -465,7 +462,6 @@ class Game {
   // Route functions: create new or update game
   static postUpdateGame = async (req, res, next) => {
     try {
-      if (!req.isAuthenticated()) return handleErrors(res, ERRORS.AUTH_REQUIRED);
       console.log('Game '+ req.body.game._id + ' action ' + req.body.action);
 
       const client = new MongoClient(dbUrl, {useNewUrlParser: true, useUnifiedTopology: true});
