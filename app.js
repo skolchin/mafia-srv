@@ -32,6 +32,7 @@ app.use(logger('tiny'));
 //passport.deserializeUser(User.deserializeUser);
 
 app.post('/api/v1/auth/', User.postLoginUser);
+app.post('/api/v1/add_user/', User.postAddUser);
 app.post('/api/v1/psw/', passport.authenticate('jwt', {session:false}), User.postSetPassword);
 app.post('/api/v1/user/', passport.authenticate('jwt', {session:false}), User.postUpdateUser);
 app.get('/api/v1/a', User.getPhoto);

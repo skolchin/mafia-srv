@@ -1,16 +1,13 @@
-const express = require('express');
 const { MongoClient, ObjectId} = require('mongodb');
 const bcrypt = require('bcryptjs')
 
-const passport = require('passport');
-const { v4: uuidv4 } = require('uuid');
 const JwtStrategy = require('passport-jwt').Strategy;
 const ExtractJwt = require('passport-jwt').ExtractJwt;
 const jwt = require('jsonwebtoken');
+const assert = require('assert');
 
 const { ERRORS, handleErrors, errorMessage } = require('./errors');
 const { dbUrl, dbName, secretKey } = require('./config');
-const Game = require('./game');
 
 class User {
   // Check password is valid
@@ -70,7 +67,7 @@ class User {
     });
   }
 
-  // Load a user by id
+  // Load a user by id - self contained version
   static loadUserExt = function(id, callback) {
     const client = new MongoClient(dbUrl, {useNewUrlParser: true, useUnifiedTopology: true});
     client.connect(function(db_err) {
@@ -85,7 +82,7 @@ class User {
     });    
   };
 
-  // Find a user by name and, optionally, load up the games
+  // Find a user by name and, optionally, load the games
   static findUser = function(db, params, callback, dontCheckPassword=false) {
     if (!params.name || !params.name.trim())
       return callback(null, ERRORS.USER_NOT_FOUND)
@@ -171,52 +168,86 @@ class User {
 
   // Update password
   static updatePassword = function(db, params, callback) {
-    if (!params.new_password)
+    if (!params.new_password || (!params._id && !params.name) )
       return callback(null, ERRORS.EMPTY_PASSWORD)
 
-    User.findUser(db, params, function(userGames, err, db_err=null) {
-      if (err)
-        return callback(null, err, db_err);
+    bcrypt.genSalt(10, function(db_err, salt) {
+      if (db_err) 
+        return callback(null, ERRORS.DB_ERROR, db_err);
 
-      bcrypt.genSalt(10, function(db_err, salt) {
+      bcrypt.hash(params.new_password, salt, function(db_err, hash) {
         if (db_err) 
           return callback(null, ERRORS.DB_ERROR, db_err);
 
-        bcrypt.hash(params.new_password, salt, function(db_err, hash) {
-          if (db_err) 
-            return callback(null, ERRORS.DB_ERROR, db_err);
-
-          db.collection('users').updateOne(
-            {'name': userGames.user.name}, 
-            {$set: {password: hash}}, 
-            {w:1}, 
-            function(db_err) { callback(user, db_err ? ERRORS.DB_ERROR : 0, db_err) });
-        });
+        const user = params._id ? {_id: ObjectId(params._id)} : {name: params.name};
+        db.collection('users').updateOne(
+          user, 
+          {$set: {password: hash}}, 
+          {w:1}, 
+          function(db_err) { callback({user: {...user, password: hash}}, db_err ? ERRORS.DB_ERROR : 0, db_err) });
       });
     })
   }
 
+  // Add new user profile
+  static addUser = function(db, params, callback) {
+    if (!params.name || !params.name.trim())
+      return callback(null, ERRORS.EMPTY_NAME);
+    if (!params.password)
+      return callback(null, ERRORS.EMPTY_PASSWORD);
+
+    bcrypt.genSalt(10, function(db_err, salt) {
+      if (db_err) 
+        return callback(null, ERRORS.DB_ERROR, db_err);
+
+      bcrypt.hash(params.password, salt, function(db_err, hash) {
+        if (db_err) 
+          return callback(null, ERRORS.DB_ERROR, db_err);
+
+        const user = {
+            provider: '',
+            name: params.name.trim().toLowerCase(), 
+            displayName: params.displayName || '',
+            givenName: params.givenName || '',
+            familyName: params.familyName || '',
+            email: params.email || '',
+            password: hash,
+            games: [],
+            history: [],
+        }
+        db.collection('users').insertOne(
+          user, 
+          {w: 1}, 
+          function(db_err) {
+            if (db_err) 
+              callback(null, db_err.code === 11000 ? ERRORS.NAME_NOT_UNIQUE : ERRORS.DB_ERROR, db_err)
+            else
+              callback({user: user}, 0, db_err);
+          });
+      });
+    });
+  }
+
   // Update user profile
   static updateUser = function(db, params, callback) {
-    const user = User.userFromRequest(params);
+    const user = params;
 
-    if (!user.name)
-      callback(null, ERRORS.USER_NOT_FOUND);
-    else if (!user.password && !user.new_password)
-      callback(null, ERRORS.EMPTY_PASSWORD);
+    if (!user._id)
+      return callback(null, ERRORS.USER_NOT_FOUND);
 
     const id = user._id;
     delete user._id;
+    delete user.password;
 
     if (user.new_password) {
-      const password = user.new_password;
+      const new_password = user.new_password;
       delete user.new_password;
 
       bcrypt.genSalt(10, function(db_err, salt) {
         if (db_err) 
           return callback(null, ERRORS.DB_ERROR, db_err);
 
-        bcrypt.hash(password, salt, function(db_err, hash) {
+        bcrypt.hash(new_password, salt, function(db_err, hash) {
           if (db_err) 
             return callback(null, ERRORS.DB_ERROR, db_err);
 
@@ -225,8 +256,8 @@ class User {
             {$set: {...user, password: hash}}, 
             {w: 1, upsert: true}, 
             function(db_err, result) {
-              const upd =  {...user, _id: result.upsertedId ? result.upsertedId._id : id};
-              callback(upd, db_err ? ERRORS.DB_ERROR : 0, db_err) 
+              const upd =  {...user, _id: result.upsertedId ? result.upsertedId._id : id, password: hash};
+              callback({user: upd}, db_err ? ERRORS.DB_ERROR : 0, db_err) 
             });
         });
       });
@@ -239,7 +270,7 @@ class User {
         {w: 1, upsert: true}, 
         function(db_err, result) { 
           const upd =  {...user, _id: result.upsertedId ? result.upsertedId._id : id};
-          callback(upd, db_err ? ERRORS.DB_ERROR : 0, db_err) 
+          callback({user: upd}, db_err ? ERRORS.DB_ERROR : 0, db_err) 
         });
     }
   }
@@ -258,7 +289,7 @@ class User {
       {w: 1, upsert: true}, 
       function(db_err, result) { 
         const upd =  {...params, _id: result.upsertedId ? result.upsertedId._id : id};
-        callback(upd, db_err ? ERRORS.DB_ERROR : 0, db_err) 
+        callback({photo: upd}, db_err ? ERRORS.DB_ERROR : 0, db_err) 
       });
   }
 
@@ -271,9 +302,8 @@ class User {
       if (db_err)
         callback(null, ERRORS.DB_ERROR, db_err);
       else {
-        console.log("Photos found: " + docs.length.toString());
         const photo = docs.length ? docs[0].photo : null;
-        callback(photo, photo ? 0 : ERRORS.NOT_FOUND);
+        callback({photo: photo}, photo ? 0 : ERRORS.NOT_FOUND);
       }
     });
   }
@@ -284,21 +314,43 @@ class User {
       console.log('Logging on user "' + req.body.name + '"');
       const client = new MongoClient(dbUrl, {useNewUrlParser: true, useUnifiedTopology: true});
       client.connect(function(db_err) {
-        if (db_err) {
+        if (db_err)
           return handleErrors(res, ERRORS.DB_ERROR, db_err);
-        }
+
         const db = client.db(dbName);
         User.findUser(db, req.body, function(userGames, err, db_err=null) {
           client.close();
-          if (err)  {
+          if (err)
             return handleErrors(res, err, db_err, {name: req.body.name});
-          }
-          else {
-            const token = jwt.sign({_id: userGames.user._id}, secretKey);
-            return res.status(200).send({ success: true, error: 0, token: 'JWT ' + token, data: userGames });
-          }
+
+          const token = jwt.sign({_id: userGames.user._id}, secretKey);
+          return res.status(200).send({ success: true, token: 'JWT ' + token, data: userGames });
         });
       });
+    } catch (e) {
+      next(e);
+    }
+  };
+
+  // Route functions: add user profile
+  static postAddUser = async (req, res, next) => {
+    try {
+      const client = new MongoClient(dbUrl, {useNewUrlParser: true, useUnifiedTopology: true});
+      console.log('Creating user "' + req.body.name + '"');
+      client.connect(function(db_err) {
+        if (db_err)
+          return handleErrors(res, ERRORS.DB_ERROR, db_err);
+
+        const db = client.db(dbName);
+        User.addUser(db, req.body, function(userGames, err, db_err=null) {
+          client.close();
+          if (err)
+            return handleErrors(res, err, db_err, {name: req.body.name});
+
+          const token = jwt.sign({_id: userGames.user._id}, secretKey);
+          return res.status(200).send({ success: true, token: 'JWT ' + token, data: userGames });
+        });
+      })
     } catch (e) {
       next(e);
     }
@@ -307,17 +359,22 @@ class User {
   // Route functions: set password
   static postSetPassword = async (req, res, next) => {
     try {
-      console.log('Changing password for user "' + req.body.name + '"');
+      assert(req.user && req.user._id, 'Invalid API call');
+      if ((req.body._id && req.body._id !== req.user._id.toString()) || 
+      (req.body.name && req.body.name !== req.user.name))
+        return handleErrors(res, ERRORS.NOT_YOU);
+
+      console.log('Changing password for user ' + (req.body.name || req.body._id) + '');
 
       const client = new MongoClient(dbUrl, {useNewUrlParser: true, useUnifiedTopology: true});
       client.connect(function(db_err) {
-        if (db_err) {
+        if (db_err)
           return handleErrors(res, ERRORS.DB_ERROR, db_err);
-        }
+
         const db = client.db(dbName);
-        User.updatePassword(db, req.body, function(user, err, db_err=null) {
+        User.updatePassword(db, req.body, function(userGames, err, db_err=null) {
           client.close();
-          return handleErrors(res, err, db_err, {name: req.body.name});
+          return handleErrors(res, err, db_err, userGames);
         });
       });    
     
@@ -326,23 +383,25 @@ class User {
     }
   };
 
-  // Route functions: create or update user profile
+  // Route functions: update user profile
   static postUpdateUser = async (req, res, next) => {
     try {
-      console.log('Updating user "' + req.body.name + '"');
+      assert(req.user && req.user._id, 'Invalid API call');
+      if (req.body._id !== req.user._id.toString())
+        return handleErrors(res, ERRORS.NOT_YOU);
 
       const client = new MongoClient(dbUrl, {useNewUrlParser: true, useUnifiedTopology: true});
+      console.log('Updating user ' + req.body._id + '');
       client.connect(function(db_err) {
         if (db_err) {
           return handleErrors(res, ERRORS.DB_ERROR, db_err);
         }
         const db = client.db(dbName);
-        User.updateUser(db, req.body, function(user, err, db_err=null) {
+        User.updateUser(db, req.body, function(userGames, err, db_err=null) {
           client.close();
-          return handleErrors(res, err, db_err, user);
+          return handleErrors(res, err, db_err, userGames);
         });
-      });    
-    
+      })
     } catch (e) {
       next(e);
     }
@@ -364,7 +423,7 @@ class User {
           if (err)
             return handleErrors(res, err, db_err, {user_id: req.query.user_id});
           else {
-            const [type, data] = User.getImageData(photo);
+            const [type, data] = User.getImageData(photo.photo);
             const img = Buffer.from(data, 'base64');
             res.writeHead(200, {
               'Content-Type': type,

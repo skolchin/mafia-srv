@@ -6,12 +6,14 @@ const ERRORS = Enum(
   'USER_NOT_FOUND',
   'INVALID_PASSWORD',
   'EMPTY_PASSWORD',
+  'EMPTY_NAME',
   'NAME_NOT_UNIQUE',
   'NOT_FOUND',
   'GAME_NOT_FOUND',
   'EMPTY_GAME_NAME',
   'INVALID_GAME_STATUS',
   'NOT_ENOUGHT_MEMBERS',
+  'NOT_YOU'
 );
 
 const MESSAGES = [
@@ -19,12 +21,14 @@ const MESSAGES = [
   [ ERRORS.USER_NOT_FOUND, 'User not found' ],
   [ ERRORS.INVALID_PASSWORD, 'Invalid password' ],
   [ ERRORS.EMPTY_PASSWORD, 'Password is empty' ],
+  [ ERRORS.EMPTY_NAME, 'User name is empty' ],
   [ ERRORS.NAME_NOT_UNIQUE, 'User name is not unique' ],
   [ ERRORS.NOT_FOUND, null ],
   [ ERRORS.GAME_NOT_FOUND, 'Game not found' ],
   [ ERRORS.EMPTY_GAME_NAME, 'Game name cannot be empty' ],
   [ ERRORS.INVALID_GAME_STATUS, 'Game status is invalid or final' ],
   [ ERRORS.NOT_ENOUGHT_MEMBERS, 'Not enought members to start a game' ],
+  [ ERRORS.NOT_YOU, 'Cannot alter another user'],
 ]
 
 const errorMessage = function(err, db_err=null) {

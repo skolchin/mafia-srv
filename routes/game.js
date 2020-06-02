@@ -37,7 +37,7 @@ class Game {
       if (db_err)
         callback(null, ERRORS.DB_ERROR, db_err);
       else
-        callback(docs.length ? Game.populateFields(docs[0]) : null, docs.length ? 0 : ERRORS.GAME_NOT_FOUND);
+        callback(docs.length ? {game: Game.populateFields(docs[0])} : null, docs.length ? 0 : ERRORS.GAME_NOT_FOUND);
     });
   }
 
@@ -55,7 +55,7 @@ class Game {
       if (err)
         callback(null, ERRORS.DB_ERROR, err);
       else {
-        callback(Game.populateFieldsMany(docs), 0);
+        callback({games: Game.populateFieldsMany(docs)}, 0);
       }
     });
   }
@@ -80,7 +80,7 @@ class Game {
             event: 'msg_game_update',
             ts: hist.ts,
             data: {
-              game: Game.populateFields(doc),
+              games: Game.populateFields(doc),
               change: hist
             }
           }
@@ -122,7 +122,7 @@ class Game {
       game,
       {w:1}, 
       function(db_err) { 
-        callback(game, db_err ? ERRORS.DB_ERROR : 0, db_err);
+        callback({game: game}, db_err ? ERRORS.DB_ERROR : 0, db_err);
       }
     )
   }
@@ -145,7 +145,7 @@ class Game {
           if (db_err)
             callback(null, ERRORS.DB_ERROR, db_err)
           else
-            Game.findGame(db, params.game, callback) 
+            Game.findGame(db, {game: params.game}, callback) 
         }
     )
   }
@@ -161,7 +161,7 @@ class Game {
         if (db_err)
           callback(null, ERRORS.DB_ERROR, db_err)
         else 
-          Game.findGame(db, params.game, callback)
+          Game.findGame(db, {game: params.game}, callback)
       };
 
       switch (params.game.status) {
