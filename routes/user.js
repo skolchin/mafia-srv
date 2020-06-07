@@ -1,6 +1,5 @@
 const { MongoClient, ObjectId} = require('mongodb');
 const bcrypt = require('bcryptjs')
-
 const JwtStrategy = require('passport-jwt').Strategy;
 const ExtractJwt = require('passport-jwt').ExtractJwt;
 const jwt = require('jsonwebtoken');
@@ -324,7 +323,7 @@ class User {
             return handleErrors(res, err, db_err, {name: req.body.name});
 
           const token = jwt.sign({_id: userGames.user._id}, secretKey);
-          return res.status(200).send({ success: true, token: 'JWT ' + token, data: userGames });
+          return res.status(200).send({ success: true, token: token, data: userGames });
         });
       });
     } catch (e) {
@@ -348,7 +347,7 @@ class User {
             return handleErrors(res, err, db_err, {name: req.body.name});
 
           const token = jwt.sign({_id: userGames.user._id}, secretKey);
-          return res.status(200).send({ success: true, token: 'JWT ' + token, data: userGames });
+          return res.status(200).send({ success: true, token: token, data: userGames });
         });
       })
     } catch (e) {
