@@ -33,6 +33,7 @@ app.post('/api/v1/set_photo/', passport.authenticate('jwt', {session:false}), Us
 
 app.get('/api/v1/game', passport.authenticate('jwt', {session:false}), Game.getGame);
 app.get('/api/v1/games', passport.authenticate('jwt', {session:false}), Game.getListGames);
+app.post('/api/v1/temp_token/', passport.authenticate('jwt', {session:false}), User.postGetTempToken);
 app.get('/api/v1/updates', passport.authenticate('jwt', {session:false}), Game.getUpdatedGames);
 app.post('/api/v1/game/', passport.authenticate('jwt', {session:false}), Game.postUpdateGame);
 

@@ -7,5 +7,11 @@ const dbName = 'mafiadb';
 // Secret
 const secretKey = '<secret>';
 
-module.exports = { dbUrl, dbName, secretKey };
+// Token lifetime
+const tokenExpire = '1d';
+
+// Temporary token expiration time
+const tempTokenExpire = '5s';
+
+module.exports = { dbUrl, dbName, secretKey, tokenExpire, tempTokenExpire };
 

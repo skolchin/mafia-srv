@@ -80,7 +80,7 @@ class Game {
             event: 'msg_game_update',
             ts: hist.ts,
             data: {
-              games: Game.populateFields(doc),
+              game: Game.populateFields(doc),
               change: hist
             }
           }
@@ -153,117 +153,116 @@ class Game {
   // Actions of updateGame: next state
   static updNextGameState = function (db, params, callback) {
     if (!params.game._id)
-      callback(null, ERRORS.GAME_NOT_FOUND)
-    else if (!params.game.status)
-      callback(null, ERRORS.INVALID_GAME_STATUS)
-    else {
-      const upd_callback = (db_err) => { 
-        if (db_err)
-          callback(null, ERRORS.DB_ERROR, db_err)
-        else 
-          Game.findGame(db, {game: params.game}, callback)
-      };
+      return callback(null, ERRORS.GAME_NOT_FOUND)
+    if (!params.game.status)
+      return callback(null, ERRORS.INVALID_GAME_STATUS)
 
-      switch (params.game.status) {
-        case 'new':
+    const upd_callback = (db_err) => { 
+      if (db_err)
+        callback(null, ERRORS.DB_ERROR, db_err)
+      else 
+        Game.findGame(db, {game: params.game}, callback)
+    };
+
+    switch (params.game.status) {
+      case 'new':
+        db.collection('games').updateOne(
+          {_id: ObjectId(params.game._id)},
+          {
+            $set: {status: 'start', modified: Date.now()},
+            $push: {
+              history: {
+                type: 'status', user_id: ObjectId(params.user._id), status: 'start', ts: Date.now()
+              }
+            }
+          },
+          {w:1}, 
+          upd_callback
+        );
+        break;
+
+      case 'start':
+        Game.findGame(db, params.game, function(games, err, db_err) {
+          if (err)
+            return callback(null, err, db_err)
+          if (!games || !games.length || games[0].members.length < 4)
+            return callback(null, ERRORS.NOT_ENOUGHT_MEMBERS)
+
+          const mafiaTotal = ((games[0].members.length - 1) / 3) >> 0;
+          var mafiaCount = 0;
+          const new_members = games[0].members.map((m, n) => {
+            if (m.role === 'leader') 
+              return m
+            else {
+              const isMafia = Math.random() < 0.5;
+              const notEnoughtMafia = (n > games[0].members.length - mafiaTotal + mafiaCount - 1);
+              const _role = (notEnoughtMafia || (isMafia && mafiaCount < mafiaTotal) ? 'mafia' : 'citizen');
+              if (_role === 'mafia')
+                mafiaCount = mafiaCount + 1;
+              return {...m, role: _role, alive: true }
+            }
+          })
+
           db.collection('games').updateOne(
-            {_id: ObjectId(params.game._id)},
+            {_id: ObjectId(params.games[0]._id)},
             {
-              $set: {status: 'start', modified: Date.now()},
+              $set: {
+                status: 'active', 
+                round: 1, 
+                period: 'day', 
+                members: new_members, 
+                modified: Date.now()
+              },
               $push: {
                 history: {
-                  type: 'status', user_id: ObjectId(params.user._id), status: 'start', ts: Date.now()
+                  type: 'status', user_id: ObjectId(params.user._id), status: 'active', ts: Date.now()
                 }
               }
             },
             {w:1}, 
             upd_callback
           );
-          break;
-  
-        case 'start':
-          Game.findGame(db, params.game, function(game, err, db_err) {
-            if (err)
-              return callback(null, err, db_err)
-            if (game.members.length < 4)
-              return callback(null, ERRORS.NOT_ENOUGHT_MEMBERS)
+        });
+        break;
 
-            const mafiaTotal = ((game.members.length - 1) / 3) >> 0;
-            var mafiaCount = 0;
-            const new_members = game.members.map((m, n) => {
-              if (m.role === 'leader') 
-                return m
-              else {
-                const isMafia = Math.random() < 0.5;
-                const notEnoughtMafia = (n > game.members.length - mafiaTotal + mafiaCount - 1);
-                const _role = (notEnoughtMafia || (isMafia && mafiaCount < mafiaTotal) ? 'mafia' : 'citizen');
-                if (_role === 'mafia')
-                  mafiaCount = mafiaCount + 1;
-                return {...m, role: _role, alive: true }
+      case 'active':
+        if (params.game.period === 'day')
+          db.collection('games').updateOne(
+            {_id: ObjectId(params.game._id)},
+            {
+              $set: {
+                period: 'night', modified: Date.now()
+              },
+              $push: {
+                history: {
+                  type: 'period', user_id: ObjectId(params.user._id), period: 'night', ts: Date.now()
+                }
               }
-            })
+            },
+            {w:1}, 
+            upd_callback
+          )
+        else 
+          db.collection('games').updateOne(
+            {_id: ObjectId(params.game._id)},
+            {
+              $set: {
+                period: 'day', modified: Date.now(), 
+              },
+              $inc: {round: 1},
+              $push: {
+                history: {
+                  type: 'period', user_id: ObjectId(params.user._id), period: 'day', ts: Date.now()
+                }
+              }
+            },
+            {w:1}, 
+            upd_callback
+          )
+        break;
 
-            db.collection('games').updateOne(
-              {_id: ObjectId(params.game._id)},
-              {
-                $set: {
-                  status: 'active', 
-                  round: 1, 
-                  period: 'day', 
-                  members: new_members, 
-                  modified: Date.now()
-                },
-                $push: {
-                  history: {
-                    type: 'status', user_id: ObjectId(params.user._id), status: 'active', ts: Date.now()
-                  }
-                }
-              },
-              {w:1}, 
-              upd_callback
-            );
-          });
-          break;
-
-        case 'active':
-          if (params.game.period === 'day')
-            db.collection('games').updateOne(
-              {_id: ObjectId(params.game._id)},
-              {
-                $set: {
-                  period: 'night', modified: Date.now()
-                },
-                $push: {
-                  history: {
-                    type: 'period', user_id: ObjectId(params.user._id), period: 'night', ts: Date.now()
-                  }
-                }
-              },
-              {w:1}, 
-              upd_callback
-            )
-          else 
-            db.collection('games').updateOne(
-              {_id: ObjectId(params.game._id)},
-              {
-                $set: {
-                  period: 'day', modified: Date.now(), 
-                },
-                $inc: {round: 1},
-                $push: {
-                  history: {
-                    type: 'period', user_id: ObjectId(params.user._id), period: 'day', ts: Date.now()
-                  }
-                }
-              },
-              {w:1}, 
-              upd_callback
-            )
-          break;
-  
-        default:
-          console.log('Unknown game state ' + params.game._id)
-      }
+      default:
+        console.log('Unknown game state ' + params.game._id)
     }
   }
 

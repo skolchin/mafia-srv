@@ -6,7 +6,7 @@ const jwt = require('jsonwebtoken');
 const assert = require('assert');
 
 const { ERRORS, handleErrors, errorMessage } = require('./errors');
-const { dbUrl, dbName, secretKey } = require('./config');
+const { dbUrl, dbName, secretKey, tokenExpire, tempTokenExpire } = require('./config');
 
 class User {
   // Check password is valid
@@ -322,7 +322,7 @@ class User {
           if (err)
             return handleErrors(res, err, db_err, {name: req.body.name});
 
-          const token = jwt.sign({_id: userGames.user._id}, secretKey);
+          const token = jwt.sign({_id: userGames.user._id}, secretKey, {expiresIn: tokenExpire});
           return res.status(200).send({ success: true, token: token, data: userGames });
         });
       });
@@ -346,7 +346,7 @@ class User {
           if (err)
             return handleErrors(res, err, db_err, {name: req.body.name});
 
-          const token = jwt.sign({_id: userGames.user._id}, secretKey);
+          const token = jwt.sign({_id: userGames.user._id}, secretKey, {expiresIn: tokenExpire});
           return res.status(200).send({ success: true, token: token, data: userGames });
         });
       })
@@ -460,6 +460,22 @@ class User {
     }
   };
 
+  // Route function: get temp token
+  static postGetTempToken = async (req, res, next) => {
+    try {
+      assert(req.user && req.user._id, 'Invalid API call');
+      if (req.body._id !== req.user._id.toString())
+        return handleErrors(res, ERRORS.NOT_YOU);
+
+      console.log('Getting temporary token for user ' + req.body._id);
+      const token = jwt.sign({_id: req.body._id, rnd: Math.random()}, secretKey, {expiresIn: tempTokenExpire});
+      return res.status(200).send({ success: true, token: token });
+
+    } catch (e) {
+      next(e);
+    }
+  };
+
   // Auth function: establish passport strategy
   static authStrategy = () => {
     return new JwtStrategy(
@@ -484,17 +500,6 @@ class User {
     )
   }
 
-  // Auth function: user-to-session serialization
-  static serializeUser = (user, done) => {
-    done(null, user._id ? user._id : user.user._id);
-  };
-  
-  // Auth function: session-to-user deserialization
-  static deserializeUser = (id, done) => {
-    //TODO: id check
-    done(null, {_id: id});
-  };
-  
 };
 
 module.exports = User;
